@@ -1,0 +1,68 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Global Helpers
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // Entity Validations
+    function isValidShop(data) {
+      return data.keys().hasAll(['ownerUid', 'type']) &&
+             data.keys().size() >= 2 && data.keys().size() <= 5 &&
+             data.ownerUid == request.auth.uid &&
+             data.type in ['feira', 'barraca', 'mercado', 'atacado'] &&
+             (data.get('name', '') is string && data.get('name', '').size() <= 100);
+    }
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'email', 'role']) &&
+             data.keys().size() >= 3 && data.keys().size() <= 5 &&
+             data.uid == request.auth.uid &&
+             data.email is string && data.email.size() <= 255 &&
+             data.role in ['vendor', 'customer'] &&
+             (data.get('name', '') is string && data.get('name', '').size() <= 100);
+    }
+
+    // Collections
+    match /shops/{shopId} {
+      allow get: if isSignedIn();
+      allow list: if isSignedIn() && resource.data.ownerUid == request.auth.uid; // Vendors see their own, or search if global
+      allow create: if isSignedIn() && isValidId(shopId) && isValidShop(incoming());
+      allow update: if isOwner(existing().ownerUid) &&
+                       isValidShop(incoming()) &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['type', 'name']);
+      allow delete: if isOwner(existing().ownerUid);
+    }
+
+    match /users/{userId} {
+      allow get, write: if isOwner(userId) && isValidUser(incoming() || existing());
+    }
+    
+    // Test collection for initial boot connection test (mentioned in instructions)
+    match /test/connection {
+      allow get: if true;
+    }
+  }
+}

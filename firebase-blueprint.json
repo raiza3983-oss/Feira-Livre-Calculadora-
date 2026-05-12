@@ -1,0 +1,37 @@
+{
+  "entities": {
+    "Shop": {
+      "title": "Shop",
+      "description": "A vendor's shop in the market",
+      "type": "object",
+      "properties": {
+        "ownerUid": { "type": "string" },
+        "type": { "type": "string", "enum": ["feira", "barraca", "mercado", "atacado"] },
+        "name": { "type": "string" }
+      },
+      "required": ["ownerUid", "type"]
+    },
+    "UserProfile": {
+      "title": "User Profile",
+      "description": "User profile data",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "role": { "type": "string", "enum": ["vendor", "customer"] },
+        "name": { "type": "string" }
+      },
+      "required": ["uid", "email", "role"]
+    }
+  },
+  "firestore": {
+    "/shops/{shopId}": {
+      "schema": "Shop",
+      "description": "Vendor shops"
+    },
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "User profile information"
+    }
+  }
+}
