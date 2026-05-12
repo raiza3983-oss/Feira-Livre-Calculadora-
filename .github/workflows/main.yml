@@ -1,4 +1,4 @@
-name: Gerar APK
+name: Gerar APK e AAB
 on: [push]
 
 jobs:
@@ -23,14 +23,17 @@ jobs:
           npx cap add android
           npx cap sync android
 
-      - name: Gerar APK Final
+      - name: Gerar APK e AAB
         run: |
           cd android
           chmod +x gradlew
           ./gradlew assembleDebug
+          ./gradlew bundleDebug
 
-      - name: Disponibilizar Link de Download
+      - name: Disponibilizar Arquivos
         uses: actions/upload-artifact@v4
         with:
-          name: aplicativo-calculadora-apk
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          name: arquivos-do-meu-app
+          path: |
+            android/app/build/outputs/apk/debug/app-debug.apk
+            android/app/build/outputs/bundle/debug/app-debug.aab
