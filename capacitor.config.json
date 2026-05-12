@@ -1,0 +1,6 @@
+{
+  "appId": "com.feiralivre.app",
+  "appName": "Feira Livre Calculadora",
+  "webDir": "dist",
+  "bundledWebRuntime": false
+}
