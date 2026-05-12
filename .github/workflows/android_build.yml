@@ -1,0 +1,34 @@
+name: Build Android APK
+on: [push]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Install and Build Web
+        run: |
+          npm install
+          npm run build # Isso cria a pasta 'dist'
+
+      - name: Build APK
+        uses: darkshredder/web-to-app-action@main
+        with:
+          build-folder-path: "dist" # Pasta que o Vite gera
+          app-name: "MeuAppOffline"
+          output-folder-path: "output"
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: meu-apk-offline
+          path: output/
