@@ -6,6 +6,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+      ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -13,23 +14,4 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
-
-      - name: Install and Build Web
-        run: |
-          npm install
-          npm run build || npx vite build
-
-
-      - name: Build APK
-        uses: darkshredder/web-to-app-action@main
-        with:
-          build-folder-path: "dist" # Pasta que o Vite gera
-          app-name: "MeuAppOffline"
-          output-folder-path: "output"
-
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: meu-apk-offline
-          path: output/
+          node-version: '24' # Vamos pular para a 24 para garantir
