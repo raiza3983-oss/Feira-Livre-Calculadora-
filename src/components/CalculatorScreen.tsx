@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import logo from '../logo.png';
 import {
   ArrowLeft, Store, Tent, ShoppingBag, Truck,
@@ -121,7 +122,33 @@ const CalculatorScreen = ({
   // Se houver itens na lista, o total é o somatório deles. 
   // O item atual sendo configurado na "Balança" não entra no total geral até ser "Adicionado".
   const itemsTotal = items.reduce((acc, item) => acc + item.total, 0);
+  const totalQuantity = items.reduce((acc, item) => acc + item.quantity, 0);
   const total = itemsTotal;
+
+  const getUnitAbbreviation = (u: string) => {
+    switch (u) {
+      case 'kg': return 'kg';
+      case 'gram': return 'g';
+      case 'unit': return 'un';
+      case 'box': return 'CX';
+      case 'bag': return 'SC';
+      default: return 'un';
+    }
+  };
+
+  const formatarMercadoria = (q: number, unitId: string) => {
+    const unidades: Record<string, [string, string]> = {
+      unit: ["unidade", "unidades"],
+      kg: ["quilo", "quilos"],
+      gram: ["grama", "gramas"],
+      box: ["caixa", "caixas"],
+      bag: ["saco", "sacos"],
+    };
+
+    const [singular, plural] = unidades[unitId] || [unitId, unitId + "s"];
+
+    return `${q} ${q === 1 ? singular : plural}`;
+  };
 
   const currentItemTotal = calculateTotal();
 
@@ -139,11 +166,8 @@ const CalculatorScreen = ({
     };
 
     setItems([...items, newItem]);
-    // Limpar campos opcionais mas manter preço se for a mesma venda? 
-    // Geralmente em feira se troca o produto, então vamos limpar o nome e resetar qty
     setProductName('');
     setQuantity(1);
-    // setPrice(0); // Talvez deixar o preço? Vamos manter por enquanto.
   };
 
   const removeItem = (id: string) => {
@@ -154,7 +178,7 @@ const CalculatorScreen = ({
   return (
     <div id="calculator-screen" className="min-h-screen bg-[#F4F5F7] font-sans pb-12">
       {/* NOVO: Topo Brand Header */}
-  <div className="w-full bg-white border-b border-slate-200 py-2 px-4 md:px-6 mb-8 shadow-sm">
+      <div className="w-full bg-white border-b border-slate-200 py-2 px-4 md:px-6 mb-8 shadow-sm">
         <div className="max-w-4xl mx-auto flex items-center gap-4 md:gap-6">
           <div className="h-10 md:h-12 flex items-center justify-center overflow-hidden shrink-0">
             <img 
@@ -329,10 +353,7 @@ const CalculatorScreen = ({
                             className="w-full p-4 pr-12 bg-white border-2 border-slate-100 rounded-[16px] outline-none font-black text-xl text-slate-800 shadow-sm"
                           />
                           <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[10px] font-black text-slate-400 uppercase">
-                            {unit === 'kg' ? 'kg' : 
-                             unit === 'gram' ? 'g' : 
-                             (unit === 'unit' || unit === 'box' || unit === 'bag') ? 'un' :
-                             'g'}
+                            {getUnitAbbreviation(unit)}
                           </span>
                         </div>
                       </div>
@@ -342,7 +363,7 @@ const CalculatorScreen = ({
                       <p className="text-[10px] font-bold text-blue-600 text-center">
                         RESULTADO DA DIVULGAÇÃO: <span className="text-blue-700">
                           {unit === 'gram' 
-                            ? "com base no peso por 1 grama, os valores são calculados."
+                            ? "com base no peso por 1 quilo, os valores são calculados para gramas."
                             : `Este produto será divulgado como: ${quantity} por ${UNITS.find(u => u.id === unit)?.label.toLowerCase() || unit}`
                           }
                         </span>
@@ -359,18 +380,19 @@ const CalculatorScreen = ({
                     {/* Lista de Produtos Adicionados */}
                     {items.length > 0 && (
                       <div className="pt-6 border-t border-slate-200">
-                        <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 ml-1 block mb-4">Produtos no Cálculo</label>
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 ml-1 block mb-4">Produtos nos Cálculos</label>
                         <div className="space-y-3">
                           {items.map((item) => (
-                            <div key={item.id} className="flex items-center justify-between p-4 bg-white rounded-2xl border border-slate-100 shadow-sm">
-                              <div className="flex flex-col">
+                            <div key={item.id} className="flex items-center justify-between p-4 bg-white rounded-2xl border border-slate-100 shadow-sm transition-all hover:shadow-md">
+                              <div className="flex flex-col gap-0.5">
                                 <span className="font-bold text-slate-800 text-sm">{item.name}</span>
-                                <span className="text-[10px] text-slate-400 font-medium uppercase">
-                                  {item.quantity} {UNITS.find(u => u.id === item.unit)?.label || item.unit} x R$ {item.price.toFixed(2)}
-                                </span>
+                                <div className="flex flex-col text-[9px] uppercase font-bold text-slate-500">
+                                  <span>Quantidade: {item.quantity} — {formatarMercadoria(item.weightPerUnit, item.unit)}</span>
+                                  <span className="text-slate-400">Preço Unitário: {formatarMercadoria(item.unit === 'gram' ? 1000 : 1, item.unit)} — R$ {item.price.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                                </div>
                               </div>
                               <div className="flex items-center gap-4">
-                                <span className="font-black text-slate-900 text-sm">R$ {item.total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                                <span className="font-black text-emerald-600 text-sm whitespace-nowrap">R$ {item.total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
                                 <button
                                   onClick={() => setItemToDelete(item.id)}
                                   className="w-8 h-8 flex items-center justify-center text-slate-300 hover:text-red-500 transition-colors"
@@ -389,33 +411,51 @@ const CalculatorScreen = ({
             </div>
 
             {/* Modal de Exclusão (Sim/Não) */}
-            {itemToDelete && (
-              <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-                <div className="bg-white rounded-[32px] p-8 w-full max-w-sm shadow-2xl animate-in fade-in zoom-in duration-200">
-                  <div className="flex flex-col items-center text-center space-y-4">
-                    <div className="w-16 h-16 bg-red-50 rounded-2xl flex items-center justify-center text-red-500 mb-2">
-                      <Trash2 size={32} />
+            <AnimatePresence>
+              {itemToDelete && (
+                <motion.div 
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  className="fixed inset-0 z-50 flex items-center justify-center p-4"
+                  onClick={() => setItemToDelete(null)}
+                >
+                  <motion.div 
+                    initial={{ scale: 0.9, opacity: 0, y: 20 }}
+                    animate={{ scale: 1, opacity: 1, y: 0 }}
+                    exit={{ scale: 0.9, opacity: 0, y: 20 }}
+                    onClick={(e) => e.stopPropagation()}
+                    className="bg-white rounded-[40px] p-10 w-full max-w-sm shadow-[0_20px_60px_rgba(0,0,0,0.15)] border border-slate-100 pointer-events-auto"
+                  >
+                    <div className="flex flex-col items-center text-center space-y-6">
+                      <div className="text-red-500 mb-2">
+                        <Trash2 size={48} />
+                      </div>
+                      <div className="space-y-2">
+                        <h3 className="text-2xl font-black text-slate-900 tracking-tight">Excluir Item?</h3>
+                        <p className="text-sm text-slate-500 font-medium px-4">
+                          Deseja remover <span className="text-slate-900 font-bold">"{items.find(i => i.id === itemToDelete)?.name}"</span> da lista de cálculos?
+                        </p>
+                      </div>
+                      <div className="grid grid-cols-1 gap-3 w-full pt-4">
+                        <button
+                          onClick={() => removeItem(itemToDelete)}
+                          className="py-4 px-6 bg-red-600 hover:bg-red-700 text-white rounded-2xl font-black text-xs uppercase tracking-widest transition-all shadow-lg shadow-red-100"
+                        >
+                          Confirmar Exclusão
+                        </button>
+                        <button
+                          onClick={() => setItemToDelete(null)}
+                          className="py-4 px-6 bg-slate-100 hover:bg-slate-200 text-slate-500 rounded-2xl font-black text-xs uppercase tracking-widest transition-all"
+                        >
+                          Cancelar
+                        </button>
+                      </div>
                     </div>
-                    <h3 className="text-xl font-black text-slate-900">Excluir Produto?</h3>
-                    <p className="text-sm text-slate-500 font-medium">Você tem certeza que deseja remover este produto do cálculo total?</p>
-                    <div className="grid grid-cols-2 gap-4 w-full pt-4">
-                      <button
-                        onClick={() => setItemToDelete(null)}
-                        className="p-4 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-2xl font-bold transition-all flex items-center justify-center gap-2"
-                      >
-                        <X size={18} /> Não
-                      </button>
-                      <button
-                        onClick={() => removeItem(itemToDelete)}
-                        className="p-4 bg-red-600 hover:bg-red-700 text-white rounded-2xl font-bold transition-all flex items-center justify-center gap-2 shadow-lg shadow-red-100"
-                      >
-                        <CheckCircle size={18} /> Sim
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
+                  </motion.div>
+                </motion.div>
+              )}
+            </AnimatePresence>
 
             {/* Cálculo de Troco Estilo Dark */}
             <div 
@@ -482,17 +522,14 @@ const CalculatorScreen = ({
                 <div className="space-y-4 pt-8 border-t border-white/20">
                   <div className="flex justify-between items-center text-xs">
                     <span className="opacity-60">Quant. Itens</span>
-                    <span className="font-bold">{items.length}</span>
+                    <span className="font-bold">{totalQuantity}</span>
                   </div>
                   <div className="flex flex-col gap-3">
-                    <span className="text-[10px] uppercase font-bold opacity-60">Lista de Pesos / Quantidades</span>
+                    <span className="text-[10px] uppercase font-bold opacity-60">LISTA DE MERCADORIA</span>
                     <div className="space-y-2 max-h-40 overflow-y-auto pr-1">
                       {items.map((item) => (
-                        <div key={item.id} className="flex justify-between items-center text-[10px] border-b border-white/10 pb-1 last:border-0">
-                          <span className="opacity-80 truncate max-w-[120px]">{item.name}</span>
-                          <span className="font-black whitespace-nowrap">
-                            {item.quantity} {UNITS.find(u => u.id === item.unit)?.label.toLowerCase().slice(0, 4)} x {item.weightPerUnit}{item.unit === 'kg' ? 'kg' : item.unit === 'gram' ? 'g' : 'un'}
-                          </span>
+                        <div key={item.id} className="flex flex-col text-[10px] border-b border-white/10 pb-1 last:border-0">
+                          <span className="opacity-80 truncate">{item.name} — {formatarMercadoria(item.weightPerUnit, item.unit)}</span>
                         </div>
                       ))}
                       {items.length === 0 && (
