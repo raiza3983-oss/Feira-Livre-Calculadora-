@@ -13,18 +13,24 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Node
+      - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: 20
 
-      - name: Install
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Install Dependencies
         run: npm install
 
-      - name: Build
+      - name: Build Vite
         run: npm run build
 
-      - name: Capacitor
+      - name: Install Capacitor
         run: |
           npm install @capacitor/core
           npm install @capacitor/cli
@@ -34,21 +40,21 @@ jobs:
         run: |
           npx cap init FeiraLivre com.feiralivre.app --web-dir dist
 
-      - name: Android Add
+      - name: Add Android
         run: npx cap add android
 
-      - name: Sync
+      - name: Sync Android
         run: npx cap sync android
 
-      - name: Gradle Permission
+      - name: Grant Gradle Permission
         run: chmod +x android/gradlew
 
-      - name: APK
+      - name: Build APK
         run: |
           cd android
           ./gradlew assembleDebug
 
-      - name: AAB
+      - name: Build AAB
         run: |
           cd android
           ./gradlew bundleRelease
