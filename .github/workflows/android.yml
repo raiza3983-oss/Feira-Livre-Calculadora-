@@ -1,4 +1,4 @@
-name: Build Android APK AAB
+name: Android APK AAB
 
 on:
   push:
@@ -22,19 +22,19 @@ jobs:
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: 21
+          java-version: 17
 
       - name: Install Dependencies
         run: npm install
 
-      - name: Build Vite
+      - name: Build Web
         run: npm run build
 
       - name: Install Capacitor
         run: |
-          npm install @capacitor/core
-          npm install @capacitor/cli
-          npm install @capacitor/android
+          npm install @capacitor/core@5
+          npm install @capacitor/cli@5
+          npm install @capacitor/android@5
 
       - name: Capacitor Init
         run: |
@@ -46,18 +46,22 @@ jobs:
       - name: Sync Android
         run: npx cap sync android
 
-      - name: Grant Gradle Permission
+      - name: Fix Gradle
+        run: |
+          echo "org.gradle.jvmargs=-Xmx2048m" >> android/gradle.properties
+
+      - name: Permission
         run: chmod +x android/gradlew
 
       - name: Build APK
         run: |
           cd android
-          ./gradlew assembleDebug
+          ./gradlew assembleDebug --stacktrace
 
       - name: Build AAB
         run: |
           cd android
-          ./gradlew bundleRelease
+          ./gradlew bundleRelease --stacktrace
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
