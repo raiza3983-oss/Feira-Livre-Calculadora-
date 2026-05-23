@@ -1,4 +1,4 @@
-name: Android APK AAB
+name: Android Build
 
 on:
   push:
@@ -10,13 +10,39 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
+      - name: Baixar projeto
         uses: actions/checkout@v4
 
-      - name: Setup Node
+      - name: Instalar Node
         uses: actions/setup-node@v4
         with:
           node-version: 20
+
+      - name: Instalar dependências
+        run: npm install
+
+      - name: Instalar Capacitor
+        run: |
+          npm install @capacitor/core
+          npm install @capacitor/cli
+          npm install @capacitor/android
+
+      - name: Build projeto
+        run: npm run build
+
+      - name: Criar capacitor.config.ts
+        run: |
+          echo "import type { CapacitorConfig } from '@capacitor/cli';" > capacitor.config.ts
+          echo "const config: CapacitorConfig = {" >> capacitor.config.ts
+          echo "appId: 'com.feiralivre.app'," >> capacitor.config.ts
+          echo "appName: 'Feira Livre'," >> capacitor.config.ts
+          echo "webDir: 'dist'," >> capacitor.config.ts
+          echo "bundledWebRuntime: false," >> capacitor.config.ts
+          echo "};" >> capacitor.config.ts
+          echo "export default config;" >> capacitor.config.ts
+
+      - name: Inicializar Capacitor
+        run: npx cap sync android
 
       - name: Setup Java
         uses: actions/setup-java@v4
@@ -24,53 +50,27 @@ jobs:
           distribution: temurin
           java-version: 17
 
-      - name: Install Dependencies
-        run: npm install
-
-      - name: Build Web
-        run: npm run build
-
-      - name: Install Capacitor
-        run: |
-          npm install @capacitor/core@5
-          npm install @capacitor/cli@5
-          npm install @capacitor/android@5
-
-      - name: Capacitor Init
-        run: |
-          npx cap init FeiraLivre com.feiralivre.app --web-dir dist
-
-      - name: Add Android
-        run: npx cap add android
-
-      - name: Sync Android
-        run: npx cap sync android
-
-      - name: Fix Gradle
-        run: |
-          echo "org.gradle.jvmargs=-Xmx2048m" >> android/gradle.properties
-
-      - name: Permission
+      - name: Permissão Gradle
         run: chmod +x android/gradlew
 
-      - name: Build APK
+      - name: Gerar APK
         run: |
           cd android
-          ./gradlew assembleDebug --stacktrace
+          ./gradlew assembleDebug
 
-      - name: Build AAB
+      - name: Gerar AAB
         run: |
           cd android
-          ./gradlew bundleRelease --stacktrace
+          ./gradlew bundleRelease
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: app-debug-apk
+          name: apk
           path: android/app/build/outputs/apk/debug/app-debug.apk
 
       - name: Upload AAB
         uses: actions/upload-artifact@v4
         with:
-          name: app-release-aab
+          name: aab
           path: android/app/build/outputs/bundle/release/app-release.aab
