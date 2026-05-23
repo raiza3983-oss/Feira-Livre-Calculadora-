@@ -1,4 +1,4 @@
-name: Android Build
+name: Build APK AAB
 
 on:
   push:
@@ -10,10 +10,10 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Baixar projeto
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Instalar Node
+      - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -27,9 +27,6 @@ jobs:
           npm install @capacitor/cli
           npm install @capacitor/android
 
-      - name: Build projeto
-        run: npm run build
-
       - name: Criar capacitor.config.ts
         run: |
           echo "import type { CapacitorConfig } from '@capacitor/cli';" > capacitor.config.ts
@@ -41,7 +38,13 @@ jobs:
           echo "};" >> capacitor.config.ts
           echo "export default config;" >> capacitor.config.ts
 
-      - name: Inicializar Capacitor
+      - name: Build Vite
+        run: npm run build
+
+      - name: Adicionar Android
+        run: npx cap add android
+
+      - name: Sync Android
         run: npx cap sync android
 
       - name: Setup Java
@@ -66,11 +69,11 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: apk
+          name: app-debug-apk
           path: android/app/build/outputs/apk/debug/app-debug.apk
 
       - name: Upload AAB
         uses: actions/upload-artifact@v4
         with:
-          name: aab
+          name: app-release-aab
           path: android/app/build/outputs/bundle/release/app-release.aab
