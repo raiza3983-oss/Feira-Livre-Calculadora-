@@ -23,8 +23,7 @@ jobs:
         run: npm install
 
       - name: Instalar Capacitor
-        run: npm install @capacitor/core @capacitor/cli @capacitor/android
-
+        npm install @capacitor/core@6 @capacitor/cli@6 @capacitor/android@6
       - name: Criar capacitor.config.ts
         run: |
           echo "import type { CapacitorConfig } from '@capacitor/cli';" > capacitor.config.ts
