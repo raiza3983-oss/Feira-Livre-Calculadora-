@@ -41,15 +41,17 @@ jobs:
 
       - name: Criar Android
         run: npx cap add android
+
       - name: Ajustar Gradle Java 17
         run: |
           sed -i 's/JavaVersion.VERSION_21/JavaVersion.VERSION_17/g' android/app/build.gradle
           sed -i "s/jvmTarget = '21'/jvmTarget = '17'/g" android/app/build.gradle
           sed -i 's/sourceCompatibility = JavaVersion.VERSION_21/sourceCompatibility = JavaVersion.VERSION_17/g' android/app/build.gradle
           sed -i 's/targetCompatibility = JavaVersion.VERSION_21/targetCompatibility = JavaVersion.VERSION_17/g' android/app/build.gradle
-            npx cap add android
-            - name: Mostrar build.gradle
+
+      - name: Mostrar build.gradle
         run: cat android/app/build.gradle
+
       - name: Sync Android
         run: npx cap sync android
 
