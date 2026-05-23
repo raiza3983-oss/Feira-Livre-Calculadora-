@@ -32,45 +32,46 @@ jobs:
 
       - name: Criar capacitor.config.ts
         run: |
-          echo "import type { CapacitorConfig } from '@capacitor/cli';" > capacitor.config.ts
-          echo "const config: CapacitorConfig = {" >> capacitor.config.ts
-          echo "appId: 'com.feiralivre.app'," >> capacitor.config.ts
-          echo "appName: 'Feira Livre'," >> capacitor.config.ts
-          echo "webDir: 'dist'," >> capacitor.config.ts
-          echo "bundledWebRuntime: false," >> capacitor.config.ts
-          echo "};" >> capacitor.config.ts
-          echo "export default config;" >> capacitor.config.ts
+          cat > capacitor.config.ts << 'EOF'
+          import type { CapacitorConfig } from '@capacitor/cli';
 
-      - name: Build Vite
+          const config: CapacitorConfig = {
+            appId: 'com.feiralivre.app',
+            appName: 'Feira Livre',
+            webDir: 'dist',
+            bundledWebRuntime: false
+          };
+
+          export default config;
+          EOF
+
+      - name: Build Web
         run: npm run build
 
-      - name: Criar Android
-        run: npx cap add android
+      - name: Adicionar Android
+        run: |
+          npx cap add android || true
+          npx cap sync android
 
-      - name: Sync Android
-        run: npx cap sync android
-
-      - name: Permissão Gradle
-        run: chmod +x android/gradlew
-
-      - name: Gerar APK
+      - name: Build APK
         run: |
           cd android
+          chmod +x ./gradlew
           ./gradlew assembleDebug
 
-      - name: Gerar AAB
+      - name: Build AAB
         run: |
           cd android
-          ./gradlew bundleRelease
+          ./gradlew bundleDebug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: APK
+          name: app-debug-apk
           path: android/app/build/outputs/apk/debug/app-debug.apk
 
       - name: Upload AAB
         uses: actions/upload-artifact@v4
         with:
-          name: AAB
-          path: android/app/build/outputs/bundle/release/app-release.aab
+          name: app-debug-aab
+          path: android/app/build/outputs/bundle/debug/app-debug.aab
