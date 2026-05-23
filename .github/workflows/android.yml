@@ -40,19 +40,13 @@ jobs:
         run: npm run build
 
       - name: Criar Android
-            - name: Corrigir Java Capacitor
+        run: npx cap add android
+
+      - name: Corrigir Java Capacitor
         run: |
           find android -type f -name "*.gradle" -exec sed -i 's/VERSION_21/VERSION_17/g' {} +
           find android -type f -name "*.gradle" -exec sed -i "s/jvmTarget = '21'/jvmTarget = '17'/g" {} +
           find android -type f -name "*.gradle" -exec sed -i 's/JavaLanguageVersion.of(21)/JavaLanguageVersion.of(17)/g' {} +
-        run: npx cap add android
-
-      
-        run: |
-          sed -i 's/JavaVersion.VERSION_21/JavaVersion.VERSION_17/g' android/app/build.gradle
-          sed -i "s/jvmTarget = '21'/jvmTarget = '17'/g" android/app/build.gradle
-          sed -i 's/sourceCompatibility = JavaVersion.VERSION_21/sourceCompatibility = JavaVersion.VERSION_17/g' android/app/build.gradle
-          sed -i 's/targetCompatibility = JavaVersion.VERSION_21/targetCompatibility = JavaVersion.VERSION_17/g' android/app/build.gradle
 
       - name: Mostrar build.gradle
         run: cat android/app/build.gradle
