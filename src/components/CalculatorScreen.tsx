@@ -40,8 +40,11 @@ const CalculatorScreen = ({
     unit: string;
     weightPerUnit: number;
     total: number;
+    comercializacao?: string;
   }>>([]);
   const [itemToDelete, setItemToDelete] = useState<string | null>(null);
+  const [comercialUnit, setComercialUnit] = useState<string>('');
+  const [comercialText, setComercialText] = useState<string>('');
 
   const SHOP_TYPES = [
     { id: 'feira',   label: 'Feira Livre', color: 'bg-emerald-500', icon: Store },
@@ -155,6 +158,14 @@ const CalculatorScreen = ({
   const addItem = () => {
     if (currentItemTotal <= 0) return;
 
+    let comercializacao = '';
+    if (comercialUnit) {
+      comercializacao = comercialUnit;
+      if (comercialText) {
+        comercializacao += ` ${comercialText}`;
+      }
+    }
+
     const newItem = {
       id: Math.random().toString(36).substr(2, 9),
       name: productName || 'Produto sem nome',
@@ -163,11 +174,14 @@ const CalculatorScreen = ({
       unit,
       weightPerUnit,
       total: currentItemTotal,
+      comercializacao: comercializacao || undefined,
     };
 
     setItems([...items, newItem]);
     setProductName('');
     setQuantity(1);
+    setComercialUnit('');
+    setComercialText('');
   };
 
   const removeItem = (id: string) => {
@@ -359,6 +373,54 @@ const CalculatorScreen = ({
                       </div>
                     </div>
 
+                    {/* Dinâmica de Comercialização Opcional */}
+                    <div className="space-y-3 pt-4 border-t border-slate-200/60 pb-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">Coluna Opcional - Dinâmica de Comercialização</span>
+                        <span className="text-[8px] bg-slate-100 text-slate-500 py-0.5 px-2 rounded-full font-bold uppercase">Demonstrativo</span>
+                      </div>
+                      
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-1">
+                          <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Menu Comercialização</label>
+                          <select
+                            id="demo-comercial-unit"
+                            value={comercialUnit}
+                            onChange={(e) => setComercialUnit(e.target.value)}
+                            className="w-full p-4 bg-white border-2 border-slate-100 rounded-[16px] outline-none font-bold text-sm text-slate-700 shadow-sm focus:border-emerald-500 transition-colors"
+                          >
+                            <option value="">Nenhuma opção selecionada</option>
+                            <option value="grama">Grama</option>
+                            <option value="quilo">Quilo</option>
+                            <option value="saco">Saco</option>
+                            <option value="unidade">Unidade</option>
+                            <option value="caixa">Caixa</option>
+                          </select>
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Peso ou Medida</label>
+                          <input
+                            id="demo-comercial-text"
+                            type="text"
+                            placeholder=""
+                            value={comercialText}
+                            onChange={(e) => setComercialText(e.target.value)}
+                            disabled={!comercialUnit}
+                            className="w-full p-4 bg-white border-2 border-slate-100 rounded-[16px] outline-none font-bold text-sm text-slate-800 shadow-sm focus:border-emerald-500 transition-colors disabled:opacity-50 disabled:bg-slate-50"
+                          />
+                        </div>
+                      </div>
+
+                      {comercialUnit && (
+                        <p className="text-[9px] text-slate-400 italic font-medium ml-1">
+                          Será demonstrado como: <span className="font-bold text-slate-600">
+                            {comercialUnit} {comercialText}
+                          </span>
+                        </p>
+                      )}
+                    </div>
+
                     <div className="bg-blue-50/50 p-4 rounded-xl border border-blue-100">
                       <p className="text-[10px] font-bold text-blue-600 text-center">
                         RESULTADO DA DIVULGAÇÃO: <span className="text-blue-700">
@@ -388,6 +450,9 @@ const CalculatorScreen = ({
                                 <span className="font-bold text-slate-800 text-sm">{item.name}</span>
                                 <div className="flex flex-col text-[9px] uppercase font-bold text-slate-500">
                                   <span>Quantidade: {item.quantity} — {formatarMercadoria(item.weightPerUnit, item.unit)}</span>
+                                  {item.comercializacao && (
+                                    <span className="text-emerald-600 font-extrabold normal-case">Comercialização: {item.comercializacao}</span>
+                                  )}
                                   <span className="text-slate-400">Preço Unitário: {formatarMercadoria(item.unit === 'gram' ? 1000 : 1, item.unit)} — R$ {item.price.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
                                 </div>
                               </div>
@@ -520,16 +585,16 @@ const CalculatorScreen = ({
                 </div>
 
                 <div className="space-y-4 pt-8 border-t border-white/20">
-                  <div className="flex justify-between items-center text-xs">
-                    <span className="opacity-60">Quant. Itens</span>
-                    <span className="font-bold">{totalQuantity}</span>
-                  </div>
                   <div className="flex flex-col gap-3">
-                    <span className="text-[10px] uppercase font-bold opacity-60">LISTA DE MERCADORIA</span>
+                    <span className="text-[10px] uppercase font-bold opacity-60">QUANTIDADES ITENS</span>
                     <div className="space-y-2 max-h-40 overflow-y-auto pr-1">
                       {items.map((item) => (
-                        <div key={item.id} className="flex flex-col text-[10px] border-b border-white/10 pb-1 last:border-0">
-                          <span className="opacity-80 truncate">{item.name} — {formatarMercadoria(item.weightPerUnit, item.unit)}</span>
+                        <div key={item.id} className="flex flex-col text-[10px] border-b border-white/10 pb-1.5 last:border-0">
+                          <span className="opacity-85 truncate font-semibold">{item.name} — {formatarMercadoria(item.weightPerUnit, item.unit)}</span>
+                          <span className="text-[9px] opacity-70 ml-1">Quantidade: {item.quantity}</span>
+                          {item.comercializacao && (
+                            <span className="text-[9px] text-emerald-100 font-semibold ml-1">Comercialização: {item.comercializacao}</span>
+                          )}
                         </div>
                       ))}
                       {items.length === 0 && (
