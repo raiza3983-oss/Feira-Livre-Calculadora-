@@ -1,4 +1,4 @@
-name: Android APK AAB
+name: Android Build
 
 on:
   workflow_dispatch:
@@ -11,13 +11,14 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Baixar projeto
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Instalar Node
+      - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: npm
 
       - name: Instalar dependências
         run: npm install
@@ -25,33 +26,45 @@ jobs:
       - name: Build Vite
         run: npm run build
 
+      - name: Instalar Capacitor
+        run: npm install @capacitor/core @capacitor/cli @capacitor/android
+
+      - name: Criar capacitor.config.ts
+        run: |
+          echo "import type { CapacitorConfig } from '@capacitor/cli';" > capacitor.config.ts
+          echo "const config: CapacitorConfig = {" >> capacitor.config.ts
+          echo "appId: 'com.feiralivre.app'," >> capacitor.config.ts
+          echo "appName: 'Feira Livre'," >> capacitor.config.ts
+          echo "webDir: 'dist'," >> capacitor.config.ts
+          echo "bundledWebRuntime: false," >> capacitor.config.ts
+          echo "};" >> capacitor.config.ts
+          echo "export default config;" >> capacitor.config.ts
+
+      - name: Adicionar Android
+        run: |
+          npx cap add android || true
+
+      - name: Sync Android
+        run: npx cap sync android
+
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: 17
 
-      - name: Instalar Capacitor
-        run: npm install @capacitor/core @capacitor/cli @capacitor/android
-
-      - name: Adicionar Android
-        run: npx cap add android
-
-      - name: Sync Android
-        run: npx cap sync android
-
       - name: Permissão Gradle
         run: chmod +x android/gradlew
 
-      - name: Gerar APK
+      - name: Build APK
         run: |
           cd android
-          ./gradlew assembleDebug
+          ./gradlew assembleDebug --stacktrace
 
-      - name: Gerar AAB
+      - name: Build AAB
         run: |
           cd android
-          ./gradlew bundleRelease
+          ./gradlew bundleRelease --stacktrace
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
