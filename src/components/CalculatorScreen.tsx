@@ -586,15 +586,19 @@ const CalculatorScreen = ({
 
                 <div className="space-y-4 pt-8 border-t border-white/20">
                   <div className="flex flex-col gap-3">
-                    <span className="text-[10px] uppercase font-bold opacity-60">QUANTIDADES ITENS</span>
+                    <span className="text-[10px] uppercase font-bold opacity-60">QUANTIDADES DE ITENS</span>
                     <div className="space-y-2 max-h-40 overflow-y-auto pr-1">
                       {items.map((item) => (
-                        <div key={item.id} className="flex flex-col text-[10px] border-b border-white/10 pb-1.5 last:border-0">
+                        <div key={item.id} className="flex flex-col text-[10px] border-b border-white/10 pb-1.5 last:border-0 font-sans">
                           <span className="opacity-85 truncate font-semibold">{item.name} — {formatarMercadoria(item.weightPerUnit, item.unit)}</span>
                           <span className="text-[9px] opacity-70 ml-1">Quantidade: {item.quantity}</span>
                           {item.comercializacao && (
                             <span className="text-[9px] text-emerald-100 font-semibold ml-1">Comercialização: {item.comercializacao}</span>
                           )}
+                          <div className="flex flex-col ml-1 mt-1">
+                            <span className="text-[8px] text-emerald-200/85 uppercase font-black tracking-wider">PREÇO DO PRODUTO</span>
+                            <span className="text-emerald-300 font-bold text-xs">R$ {item.total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                          </div>
                         </div>
                       ))}
                       {items.length === 0 && (

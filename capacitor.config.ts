@@ -1,10 +1,12 @@
 import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
-  appId: 'com.feiralivre.app',
-  appName: 'Feira Livre',
+  appId: 'com.feiralivre.calculadora',
+  appName: 'Feira Livre Calculadora',
   webDir: 'dist',
-  bundledWebRuntime: false,
+  server: {
+    androidScheme: 'https'
+  }
 };
 
 export default config;
