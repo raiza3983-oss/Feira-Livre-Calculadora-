@@ -734,7 +734,7 @@ const CalculatorScreen = ({
             )}
             <div>
               <h2 className="text-2xl font-bold tracking-tight text-slate-900">
-                {activeTab === 'calculator' ? 'Painel de Lançamento' : activeTab === 'products' ? 'Produtos' : 'Minhas Vendas'}
+                {activeTab === 'calculator' ? 'Painel de Lançamento' : activeTab === 'products' ? 'Produto' : 'Minha Venda'}
               </h2>
               <p className={cn(
                 "text-[10px] font-bold text-emerald-600 tracking-widest",
@@ -744,47 +744,47 @@ const CalculatorScreen = ({
                   ? 'COMERCIALIZAÇÃO DE VENDAS & ESTOQUE' 
                   : activeTab === 'products'
                     ? 'REGISTRO DE PRODUTO, CONTROLE DE QUANTIDADE DE ESTOQUE.'
-                    : 'Registro de vendas, histórico de vendas salvas.'}
+                    : 'Registro de venda, histórico de venda salva.'}
               </p>
             </div>
           </div>
 
           {/* Abas Modernas */}
-          <div className="flex bg-slate-200/60 p-1 rounded-2xl items-center self-start md:self-auto border border-slate-200">
+          <div className="flex flex-col bg-slate-200/60 p-1.5 rounded-2xl items-center border border-slate-200 gap-1 w-full max-w-[160px] mx-auto md:mx-0 shrink-0">
             <button
               onClick={() => setActiveTab('calculator')}
               className={cn(
-                "px-4 py-2.5 rounded-xl font-bold text-xs uppercase tracking-wider transition-all flex items-center gap-2",
+                "px-3 py-1.5 rounded-xl font-bold text-[10px] uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 w-full",
                 activeTab === 'calculator' 
                   ? "bg-white text-emerald-700 shadow-sm font-extrabold" 
                   : "text-slate-500 hover:text-slate-700 hover:bg-slate-300/40"
               )}
             >
-              <Calculator size={14} /> Calculadora
+              <Calculator size={11} /> Calculadora
             </button>
             <button
               onClick={() => setActiveTab('products')}
               className={cn(
-                "px-4 py-2.5 rounded-xl font-bold text-xs uppercase tracking-wider transition-all flex items-center gap-2",
+                "px-3 py-1.5 rounded-xl font-bold text-[10px] uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 w-full",
                 activeTab === 'products' 
                   ? "bg-white text-emerald-700 shadow-sm font-extrabold" 
                   : "text-slate-500 hover:text-slate-700 hover:bg-slate-300/40"
               )}
             >
-              <Package size={14} /> Produto
+              <Package size={11} /> Produto
             </button>
             <button
               onClick={() => setActiveTab('history')}
               className={cn(
-                "px-4 py-2.5 rounded-xl font-bold text-xs uppercase tracking-wider transition-all flex items-center gap-2 relative",
+                "px-3 py-1.5 rounded-xl font-bold text-[10px] uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 relative w-full",
                 activeTab === 'history' 
                   ? "bg-white text-emerald-700 shadow-sm font-extrabold" 
                   : "text-slate-500 hover:text-slate-700 hover:bg-slate-300/40"
               )}
             >
-              <CheckCircle size={14} /> Minhas Vendas
+              <CheckCircle size={11} /> Minha Venda
               {salesHistory.length > 0 && (
-                <span className="absolute -top-1 -right-1 bg-emerald-600 text-white text-[9px] font-bold w-4 h-4 rounded-full flex items-center justify-center border border-white">
+                <span className="absolute -top-1 -right-1 bg-emerald-600 text-white text-[8px] font-bold w-4 h-4 rounded-full flex items-center justify-center border border-white">
                   {salesHistory.length}
                 </span>
               )}
@@ -973,12 +973,7 @@ const CalculatorScreen = ({
                       </div>
                       <div className="space-y-2">
                         <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">
-                          {(() => {
-                            const label = obterLabelMedida(weightPerUnit, unit);
-                            const isSingular = weightPerUnit >= 0 && weightPerUnit <= 1.001;
-                            const suffix = isSingular ? "selecionado" : "selecionados";
-                            return `${label} ${suffix}`.toUpperCase();
-                          })()}
+                          {obterLabelMedida(1, unit).toUpperCase()}
                         </label>
                         <div className="relative group">
                           <input
@@ -1049,7 +1044,7 @@ const CalculatorScreen = ({
                         RESULTADO DA DIVULGAÇÃO: <span className="text-blue-700">
                           {unit === 'gram' 
                             ? "com base no peso por 1 quilo, os valores são calculados para gramas."
-                            : `Este produto será divulgado como: ${quantity} por ${UNITS.find(u => u.id === unit)?.label.toLowerCase() || unit}`
+                            : `Este produto será divulgado como: por ${UNITS.find(u => u.id === unit)?.label.toLowerCase() || unit}`
                           }
                         </span>
                       </p>
@@ -1251,21 +1246,33 @@ const CalculatorScreen = ({
                 </div>
 
                 {/* Nome do Cliente Opcional */}
-                <div className="space-y-1.5 mb-6 bg-white/10 p-3.5 rounded-2xl border border-white/10 w-full max-w-full overflow-hidden">
+                <div className="space-y-1.5 mb-6 bg-white/10 p-3.5 rounded-2xl border border-white/10 w-full max-w-full overflow-hidden" style={{ width: '100%', maxWidth: '100%', overflow: 'hidden' }}>
                   <label className="text-[9px] font-black uppercase tracking-widest opacity-85 flex items-center gap-1.5 text-white">
                     <User size={10} /> Nome do Cliente (Opcional)
                   </label>
                   <input
+                    id="client-name-input-safe"
                     type="text"
+                    autoComplete="off"
+                    autoCorrect="off"
+                    autoCapitalize="words"
                     placeholder="Nome do Cliente (Opcional)"
                     value={customerName || ""}
                     onChange={(e) => {
                       const val = e.target.value ?? "";
-                      if (val !== customerName) {
-                        setCustomerName(val);
-                      }
+                      setCustomerName(val);
                     }}
-                    className="w-full bg-white/20 border-0 rounded-xl py-2 px-3 text-xs font-semibold text-white placeholder:text-white/45 focus:outline-none focus:ring-2 focus:ring-white/40 transition-all font-sans"
+                    className="w-full bg-white/20 border-0 rounded-xl py-2 px-3 text-xs font-semibold text-white placeholder:text-white/45 focus:outline-none focus:ring-2 focus:ring-white/45 font-sans"
+                    style={{
+                      transform: 'none',
+                      transition: 'none',
+                      animation: 'none',
+                      WebkitTransform: 'none',
+                      WebkitTransition: 'none',
+                      overflow: 'hidden',
+                      width: '100%',
+                      maxWidth: '100%'
+                    }}
                   />
                 </div>
 
@@ -1368,7 +1375,7 @@ const CalculatorScreen = ({
                 R$
               </div>
               <div>
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-0.5">Minhas Vendas</span>
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-0.5">Minha Venda</span>
                 <span className="text-xl font-black text-slate-950">
                   R$ {salesHistory.reduce((acc, s) => acc + (s && typeof s.total === 'number' ? s.total : 0), 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                 </span>
@@ -1732,9 +1739,11 @@ const CalculatorScreen = ({
                 #
               </div>
               <div>
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Total de Vendas</span>
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                  {salesHistory.length <= 1 ? 'Total de Venda' : 'Totais de Vendas'}
+                </span>
                 <span className="text-xl font-black text-slate-900">
-                  {salesHistory.length} {salesHistory.length === 1 ? 'venda salva' : 'vendas salvas'}
+                  {salesHistory.length} {salesHistory.length <= 1 ? 'venda salva' : 'vendas salvas'}
                 </span>
               </div>
             </div>
@@ -1884,7 +1893,7 @@ const CalculatorScreen = ({
               <div className="space-y-1">
                 <h3 className="text-lg font-bold text-slate-800">Sem faturamento no histórico</h3>
                 <p className="text-sm text-slate-500 font-medium max-w-sm">
-                  As vendas finalizadas serão salvas offline de forma privada no banco de dados do seu celular. Comece agora registrando sua primeira venda!
+                  As vendas finalizadas serão salvas em dados de forma privada no banco de dados do seu celular. Comece agora registrando sua primeira venda!
                 </p>
               </div>
             </div>
