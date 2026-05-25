@@ -105,14 +105,18 @@ const CalculatorScreen = ({
       const savedProducts = localStorage.getItem('feiralivre_products');
       if (savedProducts) {
         const parsed = JSON.parse(savedProducts);
-        setProducts(Array.isArray(parsed) ? parsed.filter(p => p && p.name) : []);
+        const filtered = Array.isArray(parsed) ? parsed.filter(p => p && p.name && p.id !== '1' && p.id !== '2' && p.id !== '3' && p.id !== '4') : [];
+        setProducts(filtered);
+        localStorage.setItem('feiralivre_products', JSON.stringify(filtered));
       } else {
-        const initialProducts = [
-          { id: '1', name: 'Tomate', quantity: 50, unit: 'kg' as const, weightPerUnit: 1, costPrice: 3.5 },
-          { id: '2', name: 'Alface', quantity: 30, unit: 'unit' as const, weightPerUnit: 1, costPrice: 1.2 },
-          { id: '3', name: 'Batata', quantity: 100, unit: 'kg' as const, weightPerUnit: 1, costPrice: 2.0 },
-          { id: '4', name: 'Laranja', quantity: 10, unit: 'bag' as const, weightPerUnit: 20, costPrice: 20.0 }
-        ];
+        const initialProducts: Array<{
+          id: string;
+          name: string;
+          quantity: number;
+          unit: 'kg' | 'gram' | 'box' | 'bag' | 'unit';
+          weightPerUnit: number;
+          costPrice: number;
+        }> = [];
         setProducts(initialProducts);
         localStorage.setItem('feiralivre_products', JSON.stringify(initialProducts));
       }
@@ -849,11 +853,13 @@ const CalculatorScreen = ({
                       <Search size={10} /> Lista de Já Vendidos / Mais Vendidos (Estoque)
                     </span>
                     <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto py-1 pr-1">
-                      {products.length > 0 ? (
-                        (productName 
-                          ? products.filter(p => p.name.toLowerCase().includes(productName.toLowerCase()))
-                          : products
-                        ).slice(0, 15).map((p) => {
+                      {(() => {
+                        const availableProducts = products.filter(p => getProductMetrics(p).remainingContent > 0);
+                        return availableProducts.length > 0 ? (
+                          (productName 
+                            ? availableProducts.filter(p => p.name.toLowerCase().includes(productName.toLowerCase()))
+                            : availableProducts
+                          ).slice(0, 15).map((p) => {
                           const metrics = getProductMetrics(p);
                           const isAvailable = metrics.remainingContent > 0;
                           return (
@@ -879,23 +885,9 @@ const CalculatorScreen = ({
                           );
                         })
                       ) : (
-                        (productName 
-                          ? recentProductNames.filter(name => name.toLowerCase().includes(productName.toLowerCase()) && name.toLowerCase() !== productName.toLowerCase())
-                          : recentProductNames
-                        ).slice(0, 10).map((name) => (
-                          <button
-                            key={name}
-                            type="button"
-                            onClick={() => {
-                              setProductName(name);
-                              document.getElementById('price-input')?.focus();
-                            }}
-                            className="text-[10px] font-bold px-3 py-1.5 bg-white border border-slate-200/80 rounded-full hover:border-emerald-500 hover:text-emerald-700 transition-all flex items-center gap-1 text-slate-600 shadow-sm shrink-0"
-                          >
-                            <span>{name}</span>
-                          </button>
-                        ))
-                      )}
+                        <span className="text-[10px] text-slate-400 italic font-medium ml-1">Nenhum produto em estoque</span>
+                      );
+                    })()}
                     </div>
                   </div>
                 </div>
@@ -1497,12 +1489,7 @@ const CalculatorScreen = ({
                 {/* Peso ou medida unitário */}
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 ml-1">
-                    {(() => {
-                      const label = obterLabelMedida(productFormWeightPerUnit, productFormUnit);
-                      const isSingular = productFormWeightPerUnit >= 0 && productFormWeightPerUnit <= 1.001;
-                      const suffix = isSingular ? "selecionado" : "selecionados";
-                      return `${label} ${suffix}`.toUpperCase();
-                    })()}
+                    {obterLabelMedida(1, productFormUnit).toUpperCase()}
                   </label>
                   <input
                     type="number"
@@ -1517,7 +1504,7 @@ const CalculatorScreen = ({
               {/* Pré-visualização com cálculo de desembolso no formulário */}
               <div className="bg-slate-50 border border-slate-200/60 rounded-2xl p-4.5 space-y-2 text-[11px] font-sans text-slate-600 shadow-inner">
                 <div className="flex items-center justify-between">
-                  <span className="font-semibold text-slate-500">Valor de Lote:</span>
+                  <span className="font-semibold text-slate-500">Produto:</span>
                   <span className="font-bold text-slate-800">
                     {productFormQuantity} {obterLabelMedida(productFormQuantity, productFormUnit)}
                   </span>
