@@ -868,8 +868,6 @@ const CalculatorScreen = ({
                               type="button"
                               onClick={() => {
                                 setProductName(p.name);
-                                setUnit(p.unit);
-                                setWeightPerUnit(p.weightPerUnit);
                                 document.getElementById('price-input')?.focus();
                               }}
                               className={cn(
@@ -1499,12 +1497,19 @@ const CalculatorScreen = ({
                     className="w-full py-3 px-4 bg-slate-50 border border-slate-200 rounded-xl font-sans font-semibold text-slate-800 focus:outline-none focus:border-emerald-500 focus:bg-white text-xs transition-colors"
                   />
                 </div>
+
               </div>
 
               {/* Pré-visualização com cálculo de desembolso no formulário */}
               <div className="bg-slate-50 border border-slate-200/60 rounded-2xl p-4.5 space-y-2 text-[11px] font-sans text-slate-600 shadow-inner">
                 <div className="flex items-center justify-between">
                   <span className="font-semibold text-slate-500">Produto:</span>
+                  <span className="font-bold text-slate-800">
+                    {productFormName || "Produto sem nome"}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="font-semibold text-slate-500">Quantidade:</span>
                   <span className="font-bold text-slate-800">
                     {productFormQuantity} {obterLabelMedida(productFormQuantity, productFormUnit)}
                   </span>
@@ -1605,10 +1610,10 @@ const CalculatorScreen = ({
 
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1.5 text-[10px] font-bold text-slate-500 uppercase">
                             <span>
-                              {metrics.remainingContainers <= 1 ? "Quantidade" : "Quantidades"}: <span className="text-slate-900 normal-case">{formatarQuantidadeComUnidade(metrics.remainingContainers, p.unit)}</span>
+                              {metrics.remainingContainers <= 1 ? "Quantidade" : "Quantidades"}: <span className="text-slate-900 normal-case">{metrics.remainingContainers}</span>
                             </span>
                             <span>
-                              Original: <span className="text-slate-600 normal-case">{formatarQuantidadeComUnidade(p.quantity, p.unit)}</span>
+                              Original: <span className="text-slate-600 normal-case">{p.quantity}</span>
                             </span>
                             <span>
                               {metrics.remainingContainers <= 1 ? "Produto Disponível" : "Produtos Disponíveis"}: <span className="text-blue-600 normal-case font-extrabold">{restanteLabel}</span>
