@@ -6,7 +6,7 @@ import {
   Banknote, Info, CheckCircle, Package, Scale, 
   ChevronRight, Calculator, Hash, Layers, Weight,
   Plus, Trash2, X, Pencil, Share2, Calendar, User, Search,
-  CreditCard, QrCode, Coins
+  CreditCard, QrCode, Coins, Download
 } from 'lucide-react';
 import { collection, getDocs, limit, query, where } from 'firebase/firestore';
 import { db } from '../firebase';
@@ -597,17 +597,11 @@ const CalculatorScreen = ({
   };
 
   const getReceiptTitle = (sType: string) => {
-    switch (sType) {
-      case 'barraca':
-        return 'Barraca Livre Recibo de Vendas';
-      case 'mercado':
-        return 'Mercado Livre Recibo de Vendas';
-      case 'atacado':
-        return 'Atacado Livre Recibo de Vendas';
-      case 'feira':
-      default:
-        return 'Feira Livre Recibo de vendas';
-    }
+    const shopLabel = 
+      sType === 'barraca' ? 'Barraca Livre' :
+      sType === 'mercado' ? 'Mercado Livre' :
+      sType === 'atacado' ? 'Atacado Livre' : 'Feira Livre';
+    return `1. ${shopLabel} - Recibo de Venda`;
   };
 
   const generateReceiptText = (sale: any) => {
@@ -667,6 +661,35 @@ const CalculatorScreen = ({
     } else {
       copyToClipboard(text);
     }
+  };
+
+  const exportSalesText = () => {
+    if (salesHistory.length === 0) return;
+    
+    let text = `*1. EXPORTAÇÃO DE VENDAS*\n`;
+    text += `━━━━━━━━━━━━━━━━━━━━\n\n`;
+    
+    salesHistory.forEach((sale, index) => {
+      text += `📦 *Pedido nº ${index + 1}*\n`;
+      text += `👤 *Cliente:* ${sale.customerName || 'Cliente sem nome'}\n`;
+      text += `📅 *Data:* ${sale.date || ''}\n`;
+      text += `💳 *Forma de Pagamento:* ${obterLabelPagamento(sale.paymentMethod)}\n`;
+      text += `💵 *Total:* R$ ${(sale.total || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}\n`;
+      if (sale.amountReceived > 0) {
+        text += `🪙 *Pago:* R$ ${(sale.amountReceived || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })} | *Troco:* R$ ${(sale.change || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}\n`;
+      }
+      text += `🛒 *Produtos:*\n`;
+      const saleItems = Array.isArray(sale.items) ? sale.items : [];
+      saleItems.forEach((item: any, itemIdx: number) => {
+        text += `   ${itemIdx + 1}. ${item.name || 'Produto'} — Qtd: ${item.quantity || 0} (${obterLabelMedida(item.weightPerUnit, item.unit)}: ${formatarMercadoria(item.weightPerUnit, item.unit)}) — total: R$ ${(item.total || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}\n`;
+      });
+      text += `━━━━━━━━━━━━━━━━━━━━\n\n`;
+    });
+    
+    text += `📈 *Faturamento Acumulado:* R$ ${salesHistory.reduce((acc, s) => acc + (s.total || 0), 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}\n`;
+    text += `Gerado em: ${new Date().toLocaleDateString('pt-BR')} ${new Date().toLocaleTimeString('pt-BR')}`;
+    
+    copyToClipboard(text);
   };
 
   const copyToClipboard = (text: string) => {
@@ -862,6 +885,9 @@ const CalculatorScreen = ({
                           ).slice(0, 15).map((p) => {
                           const metrics = getProductMetrics(p);
                           const isAvailable = metrics.remainingContent > 0;
+                          const labelMed = obterLabelMedida(p.weightPerUnit, p.unit);
+                          const formattedWeight = p.weightPerUnit.toLocaleString('pt-BR', p.unit === 'gram' ? { maximumFractionDigits: 0 } : { maximumFractionDigits: 2 });
+                          const labelComMedida = `${formattedWeight} ${labelMed}`;
                           return (
                             <button
                               key={p.id}
@@ -878,7 +904,7 @@ const CalculatorScreen = ({
                               )}
                             >
                               <span className={cn("w-1.5 h-1.5 rounded-full", isAvailable ? "bg-emerald-500" : "bg-red-400")}></span>
-                              <span>{p.name} ({formatarQuantidadeComUnidade(metrics.remainingContainers, p.unit)})</span>
+                              <span>{p.name}</span>
                             </button>
                           );
                         })
@@ -1069,7 +1095,7 @@ const CalculatorScreen = ({
                       <div className="pt-6 border-t border-slate-200">
                         <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 ml-1 block mb-4">Produtos nos Cálculos</label>
                         <div className="space-y-3">
-                          {items.map((item) => (
+                          {items.map((item, index) => (
                             <div key={item.id} className={cn(
                               "flex items-center justify-between p-4 rounded-2xl border transition-all hover:shadow-md",
                               editingItemId === item.id 
@@ -1078,7 +1104,7 @@ const CalculatorScreen = ({
                             )}>
                               <div className="flex flex-col gap-0.5">
                                 <span className="font-bold text-slate-800 text-sm">
-                                  {item.name}
+                                  {index + 1}. {item.name}
                                   {editingItemId === item.id && (
                                     <span className="ml-2 text-[9px] bg-amber-500 text-white py-0.5 px-2 rounded-full font-bold uppercase">
                                       Editando
@@ -1283,13 +1309,13 @@ const CalculatorScreen = ({
                   <div className="flex flex-col gap-3 w-full max-w-full">
                     <span className="text-[10px] uppercase font-bold opacity-60">QUANTIDADES DE ITENS</span>
                     <div className="space-y-2 max-h-40 overflow-y-auto pr-1 w-full max-w-full">
-                      {items.map((item) => {
+                      {items.map((item, index) => {
                         if (!item || !item.id) return null;
                         const itemTotal = typeof item.total === 'number' ? item.total : 0;
                         return (
                           <div key={item.id} className="flex flex-col text-[10px] border-b border-white/10 pb-1.5 last:border-0 font-sans gap-0.5 w-full max-w-full overflow-hidden">
                             <span className="opacity-85 truncate font-semibold block max-w-full">
-                              {item.name || "Produto"} — {item.quantity <= 1 ? "Quantidade" : "Quantidades"}: {item.quantity || 0}
+                              {index + 1}. {item.name || "Produto"} — {item.quantity <= 1 ? "Quantidade" : "Quantidades"}: {item.quantity || 0}
                             </span>
                             <span className="text-[9px] opacity-70 ml-1 block">{obterLabelMedida(item.weightPerUnit || 0, item.unit || "unit")}: {formatarMercadoria(item.weightPerUnit || 0, item.unit || "unit")}</span>
                             {item.comercializacao && (
@@ -1427,7 +1453,7 @@ const CalculatorScreen = ({
 
                 {/* Quantidade em estoque */}
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 ml-1">QUANTIDADE EM ESTOQUE</label>
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 ml-1">QUANTIDADE DO PRODUTO (VALOR DO PREÇO UNITÁRIO)</label>
                   <input
                     type="number"
                     placeholder="0"
@@ -1439,7 +1465,7 @@ const CalculatorScreen = ({
 
                 {/* Preço de Custo */}
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 ml-1">Preço Custo / Desembolso (R$)</label>
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 ml-1">PREÇO UNITÁRIO (DESEMBOLSO) (R$)</label>
                   <div className="relative">
                      <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-xs">R$</span>
                      <input
@@ -1487,7 +1513,7 @@ const CalculatorScreen = ({
                 {/* Peso ou medida unitário */}
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 ml-1">
-                    {obterLabelMedida(1, productFormUnit).toUpperCase()}
+                    CONTAGEM DO ESTOQUE ({obterLabelMedida(1, productFormUnit).toUpperCase()})
                   </label>
                   <input
                     type="number"
@@ -1509,9 +1535,19 @@ const CalculatorScreen = ({
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="font-semibold text-slate-500">Quantidade:</span>
+                  <span className="font-semibold text-slate-500">Quantidade adicionada:</span>
                   <span className="font-bold text-slate-800">
-                    {productFormQuantity} {obterLabelMedida(productFormQuantity, productFormUnit)}
+                    {productFormQuantity}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="font-semibold text-slate-500">Tipo de Medida:</span>
+                  <span className="font-bold text-slate-800">
+                    {(() => {
+                      const measureLabel = obterLabelMedida(productFormWeightPerUnit, productFormUnit);
+                      const formattedVal = productFormWeightPerUnit.toLocaleString('pt-BR', productFormUnit === 'gram' ? { maximumFractionDigits: 0 } : { maximumFractionDigits: 2 });
+                      return `${formattedVal} — ${measureLabel}`;
+                    })()}
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
@@ -1566,25 +1602,17 @@ const CalculatorScreen = ({
                     const isAvailable = metrics.remainingContent > 0;
                     const isLowStock = isAvailable && metrics.percentRemaining <= 20;
 
-                    // formatar o conteúdo restante
+                    // formatar o conteúdo restante com locale e plural do português
                     let restanteLabel = "";
-                    if (p.unit === 'unit') {
-                      restanteLabel = `${metrics.remainingContent} ${metrics.remainingContent === 1 ? 'unidade' : 'unidades'}`;
-                    } else if (p.unit === 'gram') {
-                      restanteLabel = `${metrics.remainingContent.toFixed(0)} gramas`;
-                    } else {
-                      restanteLabel = `${metrics.remainingContent.toFixed(1)} ${metrics.remainingContent === 1 ? 'quilo' : 'quilos'}`;
-                    }
+                    const remainingLabelMedida = obterLabelMedida(metrics.remainingContent, p.unit);
+                    const formattedRemainingVal = metrics.remainingContent.toLocaleString('pt-BR', p.unit === 'gram' ? { maximumFractionDigits: 0 } : { maximumFractionDigits: 2 });
+                    restanteLabel = `${formattedRemainingVal} ${remainingLabelMedida}`;
 
-                    // formatar o vendido
+                    // formatar o vendido com locale e plural do português
                     let vendidoLabel = "";
-                    if (p.unit === 'unit') {
-                      vendidoLabel = `${metrics.totalSoldContent} ${metrics.totalSoldContent === 1 ? 'unidade' : 'unidades'}`;
-                    } else if (p.unit === 'gram') {
-                      vendidoLabel = `${metrics.totalSoldContent.toFixed(0)} gramas`;
-                    } else {
-                      vendidoLabel = `${metrics.totalSoldContent.toFixed(1)} ${metrics.totalSoldContent === 1 ? 'quilo' : 'quilos'}`;
-                    }
+                    const soldLabelMedida = obterLabelMedida(metrics.totalSoldContent, p.unit);
+                    const formattedSoldVal = metrics.totalSoldContent.toLocaleString('pt-BR', p.unit === 'gram' ? { maximumFractionDigits: 0 } : { maximumFractionDigits: 2 });
+                    vendidoLabel = `${formattedSoldVal} ${soldLabelMedida}`;
 
                     return (
                       <div key={p.id} className="flex flex-col sm:flex-row sm:items-center justify-between p-5 rounded-2xl bg-slate-50 border border-slate-100 hover:shadow-sm transition-all gap-4">
@@ -1610,25 +1638,26 @@ const CalculatorScreen = ({
 
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1.5 text-[10px] font-bold text-slate-500 uppercase">
                             <span>
-                              {metrics.remainingContainers <= 1 ? "Quantidade" : "Quantidades"}: <span className="text-slate-900 normal-case">{metrics.remainingContainers}</span>
+                              {p.quantity <= 1 ? "Quantidade" : "Quantidades"}: <span className="text-slate-900 normal-case">{p.quantity}</span>
                             </span>
                             <span>
-                              Original: <span className="text-slate-600 normal-case">{p.quantity}</span>
+                              Desembolso: <span className="text-emerald-600 normal-case">R$ {(p.costPrice * p.quantity).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
                             </span>
                             <span>
-                              {metrics.remainingContainers <= 1 ? "Produto Disponível" : "Produtos Disponíveis"}: <span className="text-blue-600 normal-case font-extrabold">{restanteLabel}</span>
+                              Preço Unitário: <span className="text-slate-900 normal-case">R$ {p.costPrice.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
                             </span>
                             <span>
-                              Produto(s) vendido(s): <span className="text-emerald-600 normal-case font-extrabold">{vendidoLabel}</span>
+                              Produto Disponível - Tipo de Medida: <span className="text-blue-600 normal-case font-extrabold">
+                                {formatarQuantidadeComUnidade(metrics.remainingContainers, p.unit)}
+                              </span>
                             </span>
-                            <span>
-                              Valor do Produto (Desembolso): <span className="text-emerald-600 normal-case">R$ {p.costPrice.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
-                            </span>
-                            <span>
-                              {(() => {
-                                const labelMed = obterLabelMedida(p.weightPerUnit, p.unit);
-                                return labelMed.charAt(0).toUpperCase() + labelMed.slice(1);
-                              })()}: <span className="text-slate-900 normal-case">{formatarMercadoria(p.weightPerUnit, p.unit)}</span>
+                            <span className="sm:col-span-2">
+                              Produto Vendido: <span className="text-emerald-600 normal-case font-extrabold">
+                                {(() => {
+                                  const soldContainers = Math.max(0, p.quantity - metrics.remainingContainers);
+                                  return formatarQuantidadeComUnidade(soldContainers, p.unit);
+                                })()}
+                              </span>
                             </span>
                           </div>
                         </div>
@@ -1740,21 +1769,29 @@ const CalculatorScreen = ({
               </div>
             </div>
 
-            <div className="bg-white rounded-[24px] p-6 shadow-sm border border-slate-100 flex items-center justify-center font-sans">
+            <div className="bg-white rounded-[24px] p-6 shadow-sm border border-slate-100 flex flex-col justify-center gap-2 font-sans">
               {salesHistory.length > 0 ? (
-                <button
-                  onClick={() => {
-                    if (window.confirm("Deseja apagar todo o histórico de vendas permanentemente? Esta ação é irreversível.")) {
-                      setSalesHistory([]);
-                      localStorage.removeItem('feiralivre_sales_history');
-                    }
-                  }}
-                  className="py-3 px-6 bg-red-50 hover:bg-red-100 text-red-600 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all w-full text-center font-bold border-0"
-                >
-                  Apagar Todo Histórico
-                </button>
+                <>
+                  <button
+                    onClick={exportSalesText}
+                    className="py-2.5 px-6 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all w-full text-center font-bold border-0 flex items-center justify-center gap-1.5 shadow-sm"
+                  >
+                    <Download size={12} /> Exportar Vendas
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (window.confirm("Deseja apagar todo o histórico de vendas permanentemente? Esta ação é irreversível.")) {
+                        setSalesHistory([]);
+                        localStorage.removeItem('feiralivre_sales_history');
+                      }
+                    }}
+                    className="py-2.5 px-6 bg-red-50 hover:bg-red-100 text-red-600 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all w-full text-center font-bold border-0"
+                  >
+                    Apagar Todo Histórico
+                  </button>
+                </>
               ) : (
-                <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Sem faturamento recente</span>
+                <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest text-center">Sem faturamento recente</span>
               )}
             </div>
           </div>
@@ -1762,7 +1799,7 @@ const CalculatorScreen = ({
           {/* Sales List */}
           {salesHistory.length > 0 ? (
             <div className="space-y-4">
-              {salesHistory.filter(Boolean).map((sale) => {
+              {salesHistory.filter(Boolean).map((sale, index) => {
                 if (!sale || !sale.id) return null;
                 const saleItems = Array.isArray(sale.items) ? sale.items : [];
                 const saleTotal = typeof sale.total === 'number' ? sale.total : 0;
@@ -1774,13 +1811,13 @@ const CalculatorScreen = ({
                     {/* Header */}
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-100">
                       <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 bg-slate-100 text-slate-700 font-black rounded-full flex items-center justify-center text-xs shrink-0">
-                          {sale.customerName ? sale.customerName.charAt(0).toUpperCase() : 'C'}
+                        <div className="w-9 h-9 bg-emerald-50 text-emerald-600 font-black rounded-full flex items-center justify-center text-xs shrink-0 border border-emerald-100">
+                          {index + 1}
                         </div>
                         <div>
                           <h4 className="font-extrabold text-slate-800 text-sm flex items-center gap-2">
-                            {(!sale.customerName || sale.customerName === 'Cliente Avulso') 
-                              ? ('Cliente - ' + (SHOP_TYPES.find(t => t.id === sale.shopType)?.label || 'Feira Livre'))
+                            Pedido nº {index + 1} — {(!sale.customerName || sale.customerName === 'Cliente Avulso') 
+                              ? (SHOP_TYPES.find(t => t.id === sale.shopType)?.label || 'Feira Livre')
                               : sale.customerName}
                           </h4>
                           <div>
@@ -1803,44 +1840,75 @@ const CalculatorScreen = ({
 
                     {/* Products List */}
                     <div className="space-y-2">
-                      <span className="text-[9px] font-black uppercase tracking-widest text-slate-400 block mb-2">Produtos Vendidos:</span>
+                      <span className="text-[9px] font-black uppercase tracking-widest text-slate-400 block mb-2">
+                        {saleItems.length <= 1 ? "Produto Vendido" : "Produtos Vendidos"}:
+                      </span>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                         {saleItems.map((item: any, idx: number) => {
                           if (!item) return null;
                           const itemTotal = typeof item.total === 'number' ? item.total : 0;
                           const itemPrice = typeof item.price === 'number' ? item.price : 0;
+
+                          // Encontrar produto correspondente no estoque para obter Produto Disponível e Tipo de Medida
+                          const matchingProduct = products.find(
+                            p => p && p.name && item.name && p.name.trim().toLowerCase() === item.name.trim().toLowerCase()
+                          );
+
+                          let restanteLabel = "";
+                          let tipoMedidaLabel = "";
+
+                          if (matchingProduct) {
+                            const metrics = getProductMetrics(matchingProduct);
+                            const remainingLabelMedida = obterLabelMedida(metrics.remainingContent, matchingProduct.unit);
+                            const formattedRemainingVal = metrics.remainingContent.toLocaleString('pt-BR', matchingProduct.unit === 'gram' ? { maximumFractionDigits: 0 } : { maximumFractionDigits: 2 });
+                            restanteLabel = `${formattedRemainingVal} ${remainingLabelMedida}`;
+
+                            const labelMed = obterLabelMedida(matchingProduct.weightPerUnit, matchingProduct.unit);
+                            const formattedWeight = matchingProduct.weightPerUnit.toLocaleString('pt-BR', matchingProduct.unit === 'gram' ? { maximumFractionDigits: 0 } : { maximumFractionDigits: 2 });
+                            tipoMedidaLabel = `${formattedWeight} — ${labelMed}`;
+                          } else {
+                            // Se o produto não for encontrado, calcula-se com base nas informações do próprio item vendido
+                            const itemUnit = item.unit || 'unit';
+                            const itemWeightVal = item.weightPerUnit || 1;
+                            const labelMed = obterLabelMedida(itemWeightVal, itemUnit);
+                            const formattedWeight = itemWeightVal.toLocaleString('pt-BR', itemUnit === 'gram' ? { maximumFractionDigits: 0 } : { maximumFractionDigits: 2 });
+                            tipoMedidaLabel = `${formattedWeight} — ${labelMed}`;
+                            restanteLabel = "Venda Avulsa (Controle indisponível)";
+                          }
+
                           return (
                             <div key={item.id || idx} className="text-xs bg-slate-50 rounded-xl p-4 border border-slate-100/60 flex flex-col gap-1.5 font-sans">
-                              {/* Nome */}
-                              <span className="font-bold text-slate-800">{item.name || 'Produto'}</span>
-                              
                               {/* Quantidade */}
                               <span className="text-[10px] text-slate-500 font-semibold block">
-                                {item.quantity <= 1 ? "Quantidade" : "Quantidades"}: {item.quantity || 0}
+                                {item.quantity <= 1 ? "Quantidade" : "Quantidades"}: <span className="text-slate-900 font-bold">{item.quantity}</span>
+                              </span>
+
+                              {/* Produto */}
+                              <span className="text-[10px] text-slate-500 font-semibold block">
+                                {item.quantity <= 1 ? "Produto" : "Produtos"}: <span className="text-slate-900 font-bold">{item.name || 'Produto'}</span>
+                              </span>
+
+                              {/* Preço Unitário */}
+                              <span className="text-[10px] text-slate-500 font-semibold block">
+                                Preço unitário: <span className="text-slate-900 font-bold">R$ {itemPrice.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                              </span>
+
+                              {/* Total */}
+                              <span className="text-[10px] text-slate-500 font-semibold block">
+                                {item.quantity <= 1 ? "Total" : "Totais"}: <span className="text-emerald-600 font-extrabold">R$ {itemTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
                               </span>
 
                               {/* Peso ou Medida */}
                               <span className="text-[10px] text-slate-500 font-semibold block">
-                                {obterLabelMedida(item.weightPerUnit, item.unit || 'unit')}: {formatarMercadoria(item.weightPerUnit, item.unit || 'unit')}
+                                {item.quantity <= 1 ? "Peso ou Medida" : "Pesos ou Medidas"}: <span className="text-slate-900 font-bold">{formatarMercadoria(item.weightPerUnit, item.unit || 'unit')}</span>
                               </span>
-                              
-                              {/* Comercialização */}
+
+                              {/* Comercialização / Peso ou Medida */}
                               {item.comercializacao && (
-                                <span className="text-[10px] text-emerald-600 font-bold block">
-                                  Comercialização: {item.comercializacao}
+                                <span className="text-[10px] text-slate-500 font-semibold block">
+                                  Comercialização / Peso ou Medida: <span className="text-emerald-700 font-extrabold">{item.comercializacao}</span>
                                 </span>
                               )}
-
-                              {/* Preço Unitário */}
-                              <div className="text-[10px] text-slate-400 font-semibold block">
-                                Preço Unitário: {formatarMercadoria(item.unit === 'gram' ? 1000 : 1, item.unit || 'unit')} — R$ {itemPrice.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                              </div>
-                              
-                              {/* Preço do produto */}
-                              <div className="flex flex-col mt-1 border-t border-slate-100 pt-2">
-                                <span className="text-[8px] text-slate-400 uppercase font-black tracking-wider">PREÇO DO PRODUTO</span>
-                                <span className="text-emerald-600 font-extrabold text-sm">R$ {itemTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
-                              </div>
                             </div>
                           );
                         })}
