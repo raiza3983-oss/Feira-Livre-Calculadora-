@@ -82,7 +82,7 @@ const CalculatorScreen = ({
   const [productFormName, setProductFormName] = useState<string>('');
   const [productFormQuantity, setProductFormQuantity] = useState<number>(0);
   const [productFormUnit, setProductFormUnit] = useState<'kg' | 'gram' | 'box' | 'bag' | 'unit'>('unit');
-  const [productFormWeightPerUnit, setProductFormWeightPerUnit] = useState<number>(1);
+  const [productFormWeightPerUnit, setProductFormWeightPerUnit] = useState<number>(0);
   const [productFormCostPrice, setProductFormCostPrice] = useState<number>(0);
 
   // Carregar histórico e nomes de produtos recentes e estoque do localStorage na inicialização
@@ -355,7 +355,7 @@ const CalculatorScreen = ({
         name: productFormName.trim(),
         quantity: Number(productFormQuantity) || 0,
         unit: productFormUnit,
-        weightPerUnit: Number(productFormWeightPerUnit) || 1,
+        weightPerUnit: isNaN(Number(productFormWeightPerUnit)) ? 0 : Number(productFormWeightPerUnit),
         costPrice: Number(productFormCostPrice) || 0,
       } : p);
       saveProducts(updated);
@@ -367,7 +367,7 @@ const CalculatorScreen = ({
         name: productFormName.trim(),
         quantity: Number(productFormQuantity) || 0,
         unit: productFormUnit,
-        weightPerUnit: Number(productFormWeightPerUnit) || 1,
+        weightPerUnit: isNaN(Number(productFormWeightPerUnit)) ? 0 : Number(productFormWeightPerUnit),
         costPrice: Number(productFormCostPrice) || 0,
       };
       saveProducts([...products, newProduct]);
@@ -377,7 +377,7 @@ const CalculatorScreen = ({
     setProductFormName('');
     setProductFormQuantity(0);
     setProductFormUnit('unit');
-    setProductFormWeightPerUnit(1);
+    setProductFormWeightPerUnit(0);
     setProductFormCostPrice(0);
   };
 
@@ -401,21 +401,13 @@ const CalculatorScreen = ({
     setProductFormName('');
     setProductFormQuantity(0);
     setProductFormUnit('unit');
-    setProductFormWeightPerUnit(1);
+    setProductFormWeightPerUnit(0);
     setProductFormCostPrice(0);
   };
 
   useEffect(() => {
     if (!productFormId) {
-      if (productFormUnit === 'kg' || productFormUnit === 'unit') {
-        setProductFormWeightPerUnit(1);
-      } else if (productFormUnit === 'gram') {
-        setProductFormWeightPerUnit(100);
-      } else if (productFormUnit === 'box') {
-        setProductFormWeightPerUnit(12);
-      } else if (productFormUnit === 'bag') {
-        setProductFormWeightPerUnit(20);
-      }
+      setProductFormWeightPerUnit(0);
     }
   }, [productFormUnit, productFormId]);
 
@@ -1313,17 +1305,35 @@ const CalculatorScreen = ({
                         if (!item || !item.id) return null;
                         const itemTotal = typeof item.total === 'number' ? item.total : 0;
                         return (
-                          <div key={item.id} className="flex flex-col text-[10px] border-b border-white/10 pb-1.5 last:border-0 font-sans gap-0.5 w-full max-w-full overflow-hidden">
-                            <span className="opacity-85 truncate font-semibold block max-w-full">
-                              {index + 1}. {item.name || "Produto"} — {item.quantity <= 1 ? "Quantidade" : "Quantidades"}: {item.quantity || 0}
-                            </span>
+                          <div key={item.id} className="flex flex-col text-[10px] border-b border-white/10 pb-2 last:border-0 font-sans gap-0.5 w-full max-w-full overflow-hidden">
+                            <div className="flex items-center justify-between gap-2 max-w-full">
+                              <span className="opacity-85 truncate font-semibold block max-w-full">
+                                {index + 1}. {item.name || "Produto"} — {item.quantity <= 1 ? "Quantidade" : "Quantidades"}: {item.quantity || 0}
+                              </span>
+                              <div className="flex items-center gap-1.5 shrink-0">
+                                <button
+                                  onClick={() => startEditItem(item)}
+                                  title="Editar Produto"
+                                  className="w-6 h-6 flex items-center justify-center rounded-md bg-white/10 hover:bg-white/20 text-white border-0 transition-colors cursor-pointer"
+                                >
+                                  <Pencil size={11} />
+                                </button>
+                                <button
+                                  onClick={() => setItemToDelete(item.id)}
+                                  title="Excluir Produto"
+                                  className="w-6 h-6 flex items-center justify-center rounded-md bg-white/10 hover:bg-rose-600 text-white border-0 transition-colors cursor-pointer"
+                                >
+                                  <Trash2 size={11} />
+                                </button>
+                              </div>
+                            </div>
                             <span className="text-[9px] opacity-70 ml-1 block">{obterLabelMedida(item.weightPerUnit || 0, item.unit || "unit")}: {formatarMercadoria(item.weightPerUnit || 0, item.unit || "unit")}</span>
                             {item.comercializacao && (
                               <span className="text-[9px] text-emerald-100 font-semibold ml-1 block">Comercialização: {item.comercializacao}</span>
                             )}
                             <div className="flex flex-col ml-1 mt-1">
                               <span className="text-[8px] text-emerald-200/85 uppercase font-black tracking-wider">PREÇO DO PRODUTO</span>
-                              <span className="text-emerald-300 font-bold text-xs">R$ {itemTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                              <span className="text-emerald-300 font-bold text-xs" style={{ color: '#a7f3d0' }}>R$ {itemTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
                             </div>
                           </div>
                         );
@@ -1479,50 +1489,7 @@ const CalculatorScreen = ({
                   </div>
                 </div>
 
-                {/* Medida / Unidade de Medida */}
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 ml-1">TIPO DE MEDIDA</label>
-                  <div className="grid grid-cols-5 gap-1.5">
-                    {[
-                      { id: 'unit', label: 'Unidade' },
-                      { id: 'kg',   label: 'quilo' },
-                      { id: 'gram', label: 'grama' },
-                      { id: 'bag',  label: 'saco' },
-                      { id: 'box',  label: 'caixa' },
-                    ].map((opt) => {
-                      const isSel = productFormUnit === opt.id;
-                      return (
-                        <button
-                          key={opt.id}
-                          type="button"
-                          onClick={() => setProductFormUnit(opt.id as any)}
-                          className={cn(
-                            "py-2 rounded-lg font-bold text-[9px] uppercase tracking-wider text-center transition-all border",
-                            isSel 
-                              ? "bg-slate-900 border-slate-900 text-white shadow-sm"
-                              : "bg-slate-50 border-slate-200 text-slate-500 hover:bg-slate-100"
-                          )}
-                        >
-                          {opt.label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
 
-                {/* Peso ou medida unitário */}
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 ml-1">
-                    CONTAGEM DO ESTOQUE ({obterLabelMedida(1, productFormUnit).toUpperCase()})
-                  </label>
-                  <input
-                    type="number"
-                    placeholder="1"
-                    value={productFormWeightPerUnit}
-                    onChange={(e) => setProductFormWeightPerUnit(Number(e.target.value))}
-                    className="w-full py-3 px-4 bg-slate-50 border border-slate-200 rounded-xl font-sans font-semibold text-slate-800 focus:outline-none focus:border-emerald-500 focus:bg-white text-xs transition-colors"
-                  />
-                </div>
 
               </div>
 
@@ -1540,16 +1507,7 @@ const CalculatorScreen = ({
                     {productFormQuantity}
                   </span>
                 </div>
-                <div className="flex items-center justify-between">
-                  <span className="font-semibold text-slate-500">Tipo de Medida:</span>
-                  <span className="font-bold text-slate-800">
-                    {(() => {
-                      const measureLabel = obterLabelMedida(productFormWeightPerUnit, productFormUnit);
-                      const formattedVal = productFormWeightPerUnit.toLocaleString('pt-BR', productFormUnit === 'gram' ? { maximumFractionDigits: 0 } : { maximumFractionDigits: 2 });
-                      return `${formattedVal} — ${measureLabel}`;
-                    })()}
-                  </span>
-                </div>
+
                 <div className="flex items-center justify-between">
                   <span className="font-semibold text-slate-500">Preço Unitário (Desembolso):</span>
                   <span className="font-bold text-slate-800">
@@ -1602,18 +1560,6 @@ const CalculatorScreen = ({
                     const isAvailable = metrics.remainingContent > 0;
                     const isLowStock = isAvailable && metrics.percentRemaining <= 20;
 
-                    // formatar o conteúdo restante com locale e plural do português
-                    let restanteLabel = "";
-                    const remainingLabelMedida = obterLabelMedida(metrics.remainingContent, p.unit);
-                    const formattedRemainingVal = metrics.remainingContent.toLocaleString('pt-BR', p.unit === 'gram' ? { maximumFractionDigits: 0 } : { maximumFractionDigits: 2 });
-                    restanteLabel = `${formattedRemainingVal} ${remainingLabelMedida}`;
-
-                    // formatar o vendido com locale e plural do português
-                    let vendidoLabel = "";
-                    const soldLabelMedida = obterLabelMedida(metrics.totalSoldContent, p.unit);
-                    const formattedSoldVal = metrics.totalSoldContent.toLocaleString('pt-BR', p.unit === 'gram' ? { maximumFractionDigits: 0 } : { maximumFractionDigits: 2 });
-                    vendidoLabel = `${formattedSoldVal} ${soldLabelMedida}`;
-
                     return (
                       <div key={p.id} className="flex flex-col sm:flex-row sm:items-center justify-between p-5 rounded-2xl bg-slate-50 border border-slate-100 hover:shadow-sm transition-all gap-4">
                         <div className="space-y-2 flex-grow">
@@ -1643,21 +1589,8 @@ const CalculatorScreen = ({
                             <span>
                               Desembolso: <span className="text-emerald-600 normal-case">R$ {(p.costPrice * p.quantity).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
                             </span>
-                            <span>
-                              Preço Unitário: <span className="text-slate-900 normal-case">R$ {p.costPrice.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
-                            </span>
-                            <span>
-                              Produto Disponível - Tipo de Medida: <span className="text-blue-600 normal-case font-extrabold">
-                                {formatarQuantidadeComUnidade(metrics.remainingContainers, p.unit)}
-                              </span>
-                            </span>
                             <span className="sm:col-span-2">
-                              Produto Vendido: <span className="text-emerald-600 normal-case font-extrabold">
-                                {(() => {
-                                  const soldContainers = Math.max(0, p.quantity - metrics.remainingContainers);
-                                  return formatarQuantidadeComUnidade(soldContainers, p.unit);
-                                })()}
-                              </span>
+                              Preço Unitário: <span className="text-slate-900 normal-case">R$ {p.costPrice.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
                             </span>
                           </div>
                         </div>
