@@ -165,10 +165,11 @@ const CalculatorScreen = ({
     const basePrice = Number(price) || 0;
     const qty = Number(quantity) || 0;
 
-    // Calculadora Matemática Manual por Peso excluindo o Fator Medida
-    // Preço Total = Preço Base * Quantidade. No caso do grama, dividimos a quantidade por 1000.
+    // Calculadora Matemática Manual por Peso com Fator Medida de Gramas
+    // Preço Total = (Preço do Quilo / 1000) * Gramas * Quantidade
     if (unit === 'gram') {
-      return basePrice * (qty / 1000);
+      const g = Number(weightPerUnit) || 0;
+      return (basePrice / 1000) * g * qty;
     }
     return basePrice * qty;
   };
@@ -180,7 +181,7 @@ const CalculatorScreen = ({
         setWeightPerUnit(1);
         break;
       case 'gram':
-        setWeightPerUnit(1);
+        setWeightPerUnit(1000);
         break;
       case 'unit':
         setWeightPerUnit(1);
@@ -760,9 +761,9 @@ const CalculatorScreen = ({
                 activeTab === 'calculator' ? "uppercase" : "normal-case"
               )}>
                 {activeTab === 'calculator' 
-                  ? 'COMERCIALIZAÇÃO DE VENDAS & ESTOQUE' 
+                  ? 'COMERCIALIZAÇÃO DE VENDAS' 
                   : activeTab === 'products'
-                    ? 'REGISTRO DE PRODUTO, CONTROLE DE QUANTIDADE DE ESTOQUE.'
+                    ? 'REGISTRO DE PRODUTO & CONTROLE DE QUANTIDADE.'
                     : 'Registro de venda, histórico de venda salva.'}
               </p>
             </div>
@@ -865,7 +866,7 @@ const CalculatorScreen = ({
                   {/* Mais Vendidos / Sugestões Rápidas */}
                   <div className="mt-1 flex flex-col gap-1.5">
                     <span className="text-[9px] font-black uppercase tracking-widest text-slate-400/80 ml-1 flex items-center gap-1">
-                      <Search size={10} /> Lista de Já Vendidos / Mais Vendidos (Estoque)
+                      <Search size={10} /> Lista de Já Vendidos / Mais Vendidos
                     </span>
                     <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto py-1 pr-1">
                       {(() => {
@@ -901,7 +902,7 @@ const CalculatorScreen = ({
                           );
                         })
                       ) : (
-                        <span className="text-[10px] text-slate-400 italic font-medium ml-1">Nenhum produto em estoque</span>
+                        <span className="text-[10px] text-slate-400 italic font-medium ml-1">Nenhum produto cadastrado</span>
                       );
                     })()}
                     </div>
@@ -1565,21 +1566,6 @@ const CalculatorScreen = ({
                         <div className="space-y-2 flex-grow">
                           <div className="flex flex-wrap items-center gap-2">
                             <span className="font-bold text-slate-800 text-sm">{p.name}</span>
-                            <span className={cn(
-                              "text-[9px] font-bold py-0.5 px-2.5 rounded-full uppercase tracking-wider border",
-                              isAvailable 
-                                ? isLowStock 
-                                  ? "bg-amber-50 border-amber-200 text-amber-600 animate-pulse" 
-                                  : "bg-emerald-50 border-emerald-100 text-emerald-600" 
-                                : "bg-rose-50 border-rose-100 text-rose-500"
-                            )}>
-                              {isAvailable 
-                                ? isLowStock 
-                                  ? "⚠️ Estoque Acabando" 
-                                  : "🟢 Em Estoque" 
-                                : "🔴 Sem Estoque"
-                              }
-                            </span>
                           </div>
 
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1.5 text-[10px] font-bold text-slate-500 uppercase">
@@ -1618,8 +1604,8 @@ const CalculatorScreen = ({
               ) : (
                 <div className="text-center py-12 text-slate-400">
                   <Package className="mx-auto mb-3 opacity-30" size={36} />
-                  <p className="text-xs font-semibold uppercase tracking-wider">Nenhum produto cadastrado no estoque</p>
-                  <p className="text-[10px] mt-1 text-slate-400 normal-case font-medium">Adicione seu primeiro produto usando o formulário ao lado para começar o controle!</p>
+                  <p className="text-xs font-semibold uppercase tracking-wider">Nenhum produto cadastrado</p>
+                  <p className="text-[10px] mt-1 text-slate-400 normal-case font-medium">Adicione seu primeiro produto usando o formulário ao lado!</p>
                 </div>
               )}
             </div>
@@ -1649,7 +1635,7 @@ const CalculatorScreen = ({
                     <div className="space-y-2">
                       <h3 className="text-2xl font-black text-slate-900 tracking-tight">Excluir Produto?</h3>
                       <p className="text-sm text-slate-500 font-medium px-4">
-                        Deseja realmente remover o produto <span className="text-slate-900 font-bold">"{products.find(p => p.id === productToDelete)?.name}"</span> do estoque?
+                        Deseja realmente remover o produto <span className="text-slate-900 font-bold">"{products.find(p => p.id === productToDelete)?.name}"</span>?
                       </p>
                     </div>
                     <div className="grid grid-cols-2 gap-3 w-full pt-4">
