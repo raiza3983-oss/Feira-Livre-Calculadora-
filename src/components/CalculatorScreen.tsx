@@ -228,8 +228,9 @@ const CalculatorScreen = ({
     };
 
     const [singular, plural] = unidades[unitId] || [unitId, unitId + "s"];
+    const isSingular = q >= 0 && q <= 1.001;
 
-    return `${q} ${q === 1 ? singular : plural}`;
+    return `${q} ${isSingular ? singular : plural}`;
   };
 
   const formatarQuantidadeComUnidade = (q: number, unitId: string) => {
