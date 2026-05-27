@@ -5,7 +5,7 @@ import {
   ArrowLeft, Store, Tent, ShoppingBag, Truck,
   Banknote, Info, CheckCircle, Package, Scale, 
   ChevronRight, Calculator, Hash, Layers, Weight,
-  Plus, Trash2, X, Pencil, Share2, Calendar, User, Search,
+  Plus, X, Pencil, Share2, Calendar, User, Search,
   CreditCard, QrCode, Coins, Download
 } from 'lucide-react';
 import { collection, getDocs, limit, query, where } from 'firebase/firestore';
@@ -761,9 +761,9 @@ const CalculatorScreen = ({
                 activeTab === 'calculator' ? "uppercase" : "normal-case"
               )}>
                 {activeTab === 'calculator' 
-                  ? 'COMERCIALIZAÇÃO DE VENDAS' 
+                  ? 'COMERCIALIZAÇÃO DE VENDAS & ESTOQUE' 
                   : activeTab === 'products'
-                    ? 'REGISTRO DE PRODUTO & CONTROLE DE QUANTIDADE.'
+                    ? 'REGISTRO DE PRODUTO, CONTROLE DE QUANTIDADE DE ESTOQUE.'
                     : 'Registro de venda, histórico de venda salva.'}
               </p>
             </div>
@@ -866,7 +866,7 @@ const CalculatorScreen = ({
                   {/* Mais Vendidos / Sugestões Rápidas */}
                   <div className="mt-1 flex flex-col gap-1.5">
                     <span className="text-[9px] font-black uppercase tracking-widest text-slate-400/80 ml-1 flex items-center gap-1">
-                      <Search size={10} /> Lista de Já Vendidos / Mais Vendidos
+                      <Search size={10} /> Lista de Já Vendidos / Mais Vendidos (Estoque)
                     </span>
                     <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto py-1 pr-1">
                       {(() => {
@@ -902,7 +902,7 @@ const CalculatorScreen = ({
                           );
                         })
                       ) : (
-                        <span className="text-[10px] text-slate-400 italic font-medium ml-1">Nenhum produto cadastrado</span>
+                        <span className="text-[10px] text-slate-400 italic font-medium ml-1">Nenhum produto em estoque</span>
                       );
                     })()}
                     </div>
@@ -1096,10 +1096,33 @@ const CalculatorScreen = ({
                                 : "bg-white border-slate-100 shadow-sm"
                             )}>
                               <div className="flex flex-col gap-0.5">
-                                <span className="font-bold text-slate-800 text-sm">
-                                  {index + 1}. {item.name}
+                                <span className="font-bold text-slate-800 text-sm flex items-center gap-1.5 flex-wrap">
+                                  <span>{index + 1}. {item.name}</span>
+                                  
+                                  <span className="inline-flex items-center gap-0.5">
+                                    <button
+                                      onClick={() => startEditItem(item)}
+                                      title="Editar Produto"
+                                      className={cn(
+                                        "w-6 h-6 flex items-center justify-center rounded-md transition-colors",
+                                        editingItemId === item.id 
+                                          ? "text-amber-600 bg-amber-100" 
+                                          : "text-slate-400 hover:text-emerald-600 hover:bg-emerald-50"
+                                      )}
+                                    >
+                                      <Pencil size={11} />
+                                    </button>
+                                    <button
+                                      onClick={() => setItemToDelete(item.id)}
+                                      title="Excluir Produto"
+                                      className="w-6 h-6 flex items-center justify-center text-slate-400 hover:text-red-500 rounded-md transition-colors bg-transparent border-0"
+                                    >
+                                      <X size={11} />
+                                    </button>
+                                  </span>
+
                                   {editingItemId === item.id && (
-                                    <span className="ml-2 text-[9px] bg-amber-500 text-white py-0.5 px-2 rounded-full font-bold uppercase">
+                                    <span className="text-[9px] bg-amber-500 text-white py-0.5 px-2 rounded-full font-bold uppercase">
                                       Editando
                                     </span>
                                   )}
@@ -1115,25 +1138,6 @@ const CalculatorScreen = ({
                               </div>
                               <div className="flex items-center gap-2 md:gap-4 shrink-0">
                                 <span className="font-black text-emerald-600 text-sm whitespace-nowrap mr-1">R$ {item.total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
-                                <button
-                                  onClick={() => startEditItem(item)}
-                                  title="Editar Produto"
-                                  className={cn(
-                                    "w-8 h-8 flex items-center justify-center rounded-lg transition-colors",
-                                    editingItemId === item.id 
-                                      ? "text-amber-600 bg-amber-100" 
-                                      : "text-slate-300 hover:text-emerald-600 hover:bg-emerald-50"
-                                  )}
-                                >
-                                  <Pencil size={14} />
-                                </button>
-                                <button
-                                  onClick={() => setItemToDelete(item.id)}
-                                  title="Excluir Produto"
-                                  className="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-red-500 rounded-lg transition-colors bg-transparent border-0"
-                                >
-                                  <Trash2 size={14} />
-                                </button>
                               </div>
                             </div>
                           ))}
@@ -1164,7 +1168,7 @@ const CalculatorScreen = ({
                   >
                     <div className="flex flex-col items-center text-center space-y-6">
                       <div className="text-red-500 mb-2">
-                        <Trash2 size={48} />
+                        <X size={48} />
                       </div>
                       <div className="space-y-2">
                         <h3 className="text-2xl font-black text-slate-900 tracking-tight">Excluir Item?</h3>
@@ -1308,25 +1312,25 @@ const CalculatorScreen = ({
                         return (
                           <div key={item.id} className="flex flex-col text-[10px] border-b border-white/10 pb-2 last:border-0 font-sans gap-0.5 w-full max-w-full overflow-hidden">
                             <div className="flex items-center justify-between gap-2 max-w-full">
-                              <span className="opacity-85 truncate font-semibold block max-w-full">
-                                {index + 1}. {item.name || "Produto"} — {item.quantity <= 1 ? "Quantidade" : "Quantidades"}: {item.quantity || 0}
+                              <span className="opacity-85 truncate font-semibold block max-w-full flex items-center gap-1.5 flex-wrap">
+                                <span>{index + 1}. {item.name || "Produto"} — {item.quantity <= 1 ? "Quantidade" : "Quantidades"}: {item.quantity || 0}</span>
+                                <span className="inline-flex items-center gap-1 shrink-0">
+                                  <button
+                                    onClick={() => startEditItem(item)}
+                                    title="Editar Produto"
+                                    className="w-5 h-5 flex items-center justify-center rounded-md bg-white/10 hover:bg-white/20 text-white border-0 transition-colors cursor-pointer"
+                                  >
+                                    <Pencil size={9} />
+                                  </button>
+                                  <button
+                                    onClick={() => setItemToDelete(item.id)}
+                                    title="Excluir Produto"
+                                    className="w-5 h-5 flex items-center justify-center rounded-md bg-white/10 hover:bg-rose-600 text-white border-0 transition-colors cursor-pointer"
+                                  >
+                                    <X size={9} />
+                                  </button>
+                                </span>
                               </span>
-                              <div className="flex items-center gap-1.5 shrink-0">
-                                <button
-                                  onClick={() => startEditItem(item)}
-                                  title="Editar Produto"
-                                  className="w-6 h-6 flex items-center justify-center rounded-md bg-white/10 hover:bg-white/20 text-white border-0 transition-colors cursor-pointer"
-                                >
-                                  <Pencil size={11} />
-                                </button>
-                                <button
-                                  onClick={() => setItemToDelete(item.id)}
-                                  title="Excluir Produto"
-                                  className="w-6 h-6 flex items-center justify-center rounded-md bg-white/10 hover:bg-rose-600 text-white border-0 transition-colors cursor-pointer"
-                                >
-                                  <Trash2 size={11} />
-                                </button>
-                              </div>
                             </div>
                             <span className="text-[9px] opacity-70 ml-1 block">{obterLabelMedida(item.weightPerUnit || 0, item.unit || "unit")}: {formatarMercadoria(item.weightPerUnit || 0, item.unit || "unit")}</span>
                             {item.comercializacao && (
@@ -1559,13 +1563,41 @@ const CalculatorScreen = ({
                   {products.map((p) => {
                     const metrics = getProductMetrics(p);
                     const isAvailable = metrics.remainingContent > 0;
-                    const isLowStock = isAvailable && metrics.percentRemaining <= 20;
 
                     return (
                       <div key={p.id} className="flex flex-col sm:flex-row sm:items-center justify-between p-5 rounded-2xl bg-slate-50 border border-slate-100 hover:shadow-sm transition-all gap-4">
                         <div className="space-y-2 flex-grow">
-                          <div className="flex flex-wrap items-center gap-2">
+                          <div className="flex flex-wrap items-center gap-2.5">
                             <span className="font-bold text-slate-800 text-sm">{p.name}</span>
+                            
+                            <div className="flex items-center gap-1 shrink-0">
+                              <button
+                                onClick={() => startEditProduct(p)}
+                                className="w-6 h-6 text-slate-400 hover:text-emerald-500 rounded-md flex items-center justify-center transition-colors bg-transparent border-0 cursor-pointer"
+                                title="Editar Produto"
+                              >
+                                <Pencil size={11} />
+                              </button>
+                              <button
+                                onClick={() => setProductToDelete(p.id)}
+                                className="w-6 h-6 text-slate-400 hover:text-red-500 rounded-md flex items-center justify-center transition-colors bg-transparent border-0 cursor-pointer"
+                                title="Excluir Produto"
+                              >
+                                <X size={11} />
+                              </button>
+                            </div>
+
+                            <span className={cn(
+                              "text-[9px] font-bold py-0.5 px-2.5 rounded-full uppercase tracking-wider border",
+                              isAvailable 
+                                ? "bg-emerald-50 border-emerald-100 text-emerald-600" 
+                                : "bg-rose-50 border-rose-100 text-rose-500"
+                            )}>
+                              {isAvailable 
+                                ? "🟢 Em Estoque" 
+                                : "🔴 Sem Estoque"
+                              }
+                            </span>
                           </div>
 
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1.5 text-[10px] font-bold text-slate-500 uppercase">
@@ -1580,23 +1612,6 @@ const CalculatorScreen = ({
                             </span>
                           </div>
                         </div>
-
-                        <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
-                          <button
-                            onClick={() => startEditProduct(p)}
-                            className="w-8 h-8 text-slate-400 hover:text-emerald-500 rounded-lg flex items-center justify-center transition-colors bg-transparent border-0"
-                            title="Editar Produto"
-                          >
-                            <Pencil size={12} />
-                          </button>
-                          <button
-                            onClick={() => setProductToDelete(p.id)}
-                            className="w-8 h-8 text-slate-400 hover:text-red-500 rounded-lg flex items-center justify-center transition-colors bg-transparent border-0"
-                            title="Excluir Produto"
-                          >
-                            <Trash2 size={12} />
-                          </button>
-                        </div>
                       </div>
                     );
                   })}
@@ -1604,8 +1619,8 @@ const CalculatorScreen = ({
               ) : (
                 <div className="text-center py-12 text-slate-400">
                   <Package className="mx-auto mb-3 opacity-30" size={36} />
-                  <p className="text-xs font-semibold uppercase tracking-wider">Nenhum produto cadastrado</p>
-                  <p className="text-[10px] mt-1 text-slate-400 normal-case font-medium">Adicione seu primeiro produto usando o formulário ao lado!</p>
+                  <p className="text-xs font-semibold uppercase tracking-wider">Nenhum produto cadastrado no estoque</p>
+                  <p className="text-[10px] mt-1 text-slate-400 normal-case font-medium">Adicione seu primeiro produto usando o formulário ao lado para começar o controle!</p>
                 </div>
               )}
             </div>
@@ -1630,12 +1645,12 @@ const CalculatorScreen = ({
                 >
                   <div className="flex flex-col items-center space-y-6">
                     <div className="text-red-500 mb-2">
-                      <Trash2 size={48} />
+                      <X size={48} />
                     </div>
                     <div className="space-y-2">
                       <h3 className="text-2xl font-black text-slate-900 tracking-tight">Excluir Produto?</h3>
                       <p className="text-sm text-slate-500 font-medium px-4">
-                        Deseja realmente remover o produto <span className="text-slate-900 font-bold">"{products.find(p => p.id === productToDelete)?.name}"</span>?
+                        Deseja realmente remover o produto <span className="text-slate-900 font-bold">"{products.find(p => p.id === productToDelete)?.name}"</span> do estoque?
                       </p>
                     </div>
                     <div className="grid grid-cols-2 gap-3 w-full pt-4">
@@ -1856,7 +1871,7 @@ const CalculatorScreen = ({
                           className="w-10 h-10 flex items-center justify-center text-slate-400 hover:text-red-500 rounded-xl transition-all bg-transparent border-0"
                           title="Excluir venda do histórico"
                         >
-                          <Trash2 size={14} />
+                          <X size={14} />
                         </button>
                       </div>
                     </div>
@@ -1906,7 +1921,7 @@ const CalculatorScreen = ({
                 >
                   <div className="flex flex-col items-center space-y-6">
                     <div className="text-red-500 mb-2">
-                      <Trash2 size={48} />
+                      <X size={48} />
                     </div>
                     <div className="space-y-2">
                       <h3 className="text-2xl font-black text-slate-900 tracking-tight">Excluir Venda?</h3>
