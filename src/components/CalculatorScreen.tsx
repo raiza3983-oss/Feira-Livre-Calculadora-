@@ -77,6 +77,7 @@ const CalculatorScreen = ({
     unit: 'kg' | 'gram' | 'box' | 'bag' | 'unit';
     weightPerUnit: number;
     costPrice: number;
+    createdAt?: string;
   }>>([]);
   const [productFormId, setProductFormId] = useState<string | null>(null);
   const [productFormName, setProductFormName] = useState<string>('');
@@ -116,6 +117,7 @@ const CalculatorScreen = ({
           unit: 'kg' | 'gram' | 'box' | 'bag' | 'unit';
           weightPerUnit: number;
           costPrice: number;
+          createdAt?: string;
         }> = [];
         setProducts(initialProducts);
         localStorage.setItem('feiralivre_products', JSON.stringify(initialProducts));
@@ -370,6 +372,10 @@ const CalculatorScreen = ({
         unit: productFormUnit,
         weightPerUnit: isNaN(Number(productFormWeightPerUnit)) ? 0 : Number(productFormWeightPerUnit),
         costPrice: Number(productFormCostPrice) || 0,
+        createdAt: new Date().toLocaleString('pt-BR', {
+          dateStyle: 'short',
+          timeStyle: 'short'
+        })
       };
       saveProducts([...products, newProduct]);
     }
@@ -866,43 +872,35 @@ const CalculatorScreen = ({
                   {/* Mais Vendidos / Sugestões Rápidas */}
                   <div className="mt-1 flex flex-col gap-1.5">
                     <span className="text-[9px] font-black uppercase tracking-widest text-slate-400/80 ml-1 flex items-center gap-1">
-                      <Search size={10} /> Lista de Já Vendidos / Mais Vendidos (Estoque)
+                      <Search size={10} /> Lista de Já Vendidos / Mais Vendidos (Produtos Cadastrados)
                     </span>
                     <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto py-1 pr-1">
                       {(() => {
-                        const availableProducts = products.filter(p => getProductMetrics(p).remainingContent > 0);
+                        const availableProducts = products;
                         return availableProducts.length > 0 ? (
                           (productName 
                             ? availableProducts.filter(p => p.name.toLowerCase().includes(productName.toLowerCase()))
                             : availableProducts
                           ).slice(0, 15).map((p) => {
-                          const metrics = getProductMetrics(p);
-                          const isAvailable = metrics.remainingContent > 0;
-                          const labelMed = obterLabelMedida(p.weightPerUnit, p.unit);
-                          const formattedWeight = p.weightPerUnit.toLocaleString('pt-BR', p.unit === 'gram' ? { maximumFractionDigits: 0 } : { maximumFractionDigits: 2 });
-                          const labelComMedida = `${formattedWeight} ${labelMed}`;
                           return (
                             <button
                               key={p.id}
                               type="button"
                               onClick={() => {
                                 setProductName(p.name);
+                                setUnit(p.unit as any);
+                                setWeightPerUnit(p.weightPerUnit || 1);
                                 document.getElementById('price-input')?.focus();
                               }}
-                              className={cn(
-                                "text-[10px] font-bold px-3 py-1.5 border rounded-full transition-all flex items-center gap-1.5 shadow-sm shrink-0",
-                                isAvailable 
-                                  ? "bg-white border-slate-200 hover:border-emerald-500 hover:text-emerald-700 text-slate-600" 
-                                  : "bg-red-50/50 border-red-100 text-red-500/80 hover:border-red-300"
-                              )}
+                              className="text-[10px] font-bold px-3 py-1.5 border border-slate-200 hover:border-emerald-500 hover:text-emerald-700 bg-white text-slate-600 rounded-full transition-all flex items-center gap-1.5 shadow-sm shrink-0"
                             >
-                              <span className={cn("w-1.5 h-1.5 rounded-full", isAvailable ? "bg-emerald-500" : "bg-red-400")}></span>
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
                               <span>{p.name}</span>
                             </button>
                           );
                         })
                       ) : (
-                        <span className="text-[10px] text-slate-400 italic font-medium ml-1">Nenhum produto em estoque</span>
+                        <span className="text-[10px] text-slate-400 italic font-medium ml-1">Nenhum produto cadastrado</span>
                       );
                     })()}
                     </div>
@@ -1586,18 +1584,6 @@ const CalculatorScreen = ({
                                 <X size={11} />
                               </button>
                             </div>
-
-                            <span className={cn(
-                              "text-[9px] font-bold py-0.5 px-2.5 rounded-full uppercase tracking-wider border",
-                              isAvailable 
-                                ? "bg-emerald-50 border-emerald-100 text-emerald-600" 
-                                : "bg-rose-50 border-rose-100 text-rose-500"
-                            )}>
-                              {isAvailable 
-                                ? "🟢 Em Estoque" 
-                                : "🔴 Sem Estoque"
-                              }
-                            </span>
                           </div>
 
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1.5 text-[10px] font-bold text-slate-500 uppercase">
@@ -1606,6 +1592,9 @@ const CalculatorScreen = ({
                             </span>
                             <span>
                               Desembolso: <span className="text-emerald-600 normal-case">R$ {(p.costPrice * p.quantity).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                            </span>
+                            <span>
+                              Data/Hora: <span className="text-slate-900 normal-case">{p.createdAt}</span>
                             </span>
                             <span className="sm:col-span-2">
                               Preço Unitário: <span className="text-slate-900 normal-case">R$ {p.costPrice.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
