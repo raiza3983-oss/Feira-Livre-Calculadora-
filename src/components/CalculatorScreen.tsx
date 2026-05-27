@@ -671,7 +671,8 @@ const CalculatorScreen = ({
     text += `━━━━━━━━━━━━━━━━━━━━\n\n`;
     
     salesHistory.forEach((sale, index) => {
-      text += `📦 *Pedido nº ${index + 1}*\n`;
+      const orderNumber = salesHistory.length - index;
+      text += `📦 *Pedido nº ${orderNumber}*\n`;
       text += `👤 *Cliente:* ${sale.customerName || 'Cliente sem nome'}\n`;
       text += `📅 *Data:* ${sale.date || ''}\n`;
       text += `💳 *Forma de Pagamento:* ${obterLabelPagamento(sale.paymentMethod)}\n`;
@@ -1731,6 +1732,7 @@ const CalculatorScreen = ({
                 const saleTotal = typeof sale.total === 'number' ? sale.total : 0;
                 const saleAmountReceived = typeof sale.amountReceived === 'number' ? sale.amountReceived : 0;
                 const saleChange = typeof sale.change === 'number' ? sale.change : 0;
+                const orderNumber = salesHistory.length - index;
 
                 return (
                   <div key={sale.id} className="bg-white rounded-[28px] border border-slate-100 p-6 shadow-sm hover:shadow-md transition-all space-y-4 animate-fade-in">
@@ -1738,11 +1740,11 @@ const CalculatorScreen = ({
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-100">
                       <div className="flex items-center gap-3">
                         <div className="w-9 h-9 bg-emerald-50 text-emerald-600 font-black rounded-full flex items-center justify-center text-xs shrink-0 border border-emerald-100">
-                          {index + 1}
+                          {orderNumber}
                         </div>
                         <div>
                           <h4 className="font-extrabold text-slate-800 text-sm flex items-center gap-2">
-                            Pedido nº {index + 1} — {(!sale.customerName || sale.customerName === 'Cliente Avulso') 
+                            Pedido nº {orderNumber} — {(!sale.customerName || sale.customerName === 'Cliente Avulso') 
                               ? (SHOP_TYPES.find(t => t.id === sale.shopType)?.label || 'Feira Livre')
                               : sale.customerName}
                           </h4>
