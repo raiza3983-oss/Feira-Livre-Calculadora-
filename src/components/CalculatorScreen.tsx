@@ -166,14 +166,16 @@ const CalculatorScreen = ({
   const calculateTotal = () => {
     const basePrice = Number(price) || 0;
     const qty = Number(quantity) || 0;
+    const w = Number(weightPerUnit) || 1;
 
     // Calculadora Matemática Manual por Peso com Fator Medida de Gramas
     // Preço Total = (Preço do Quilo / 1000) * Gramas * Quantidade
     if (unit === 'gram') {
-      const g = Number(weightPerUnit) || 0;
-      return (basePrice / 1000) * g * qty;
+      return (basePrice / 1000) * w * qty;
     }
-    return basePrice * qty;
+    // Para kg, caixas (box), sacos (bag) ou unidades (unit), multiplicamos o preço de venda pela quantidade de volumes e pelo peso/unidades de cada volume.
+    // Se o peso/multiplicador por volume for 1 (padrão), o cálculo se mantém perfeitamente como basePrice * qty.
+    return basePrice * w * qty;
   };
 
   useEffect(() => {
@@ -872,7 +874,7 @@ const CalculatorScreen = ({
                   {/* Mais Vendidos / Sugestões Rápidas */}
                   <div className="mt-1 flex flex-col gap-1.5">
                     <span className="text-[9px] font-black uppercase tracking-widest text-slate-400/80 ml-1 flex items-center gap-1">
-                      <Search size={10} /> Lista de Já Vendidos / Mais Vendidos (Produtos Cadastrados)
+                      <Search size={10} /> Lista de Já Vendidos / Mais Vendidos (Estoque)
                     </span>
                     <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto py-1 pr-1">
                       {(() => {
@@ -888,11 +890,12 @@ const CalculatorScreen = ({
                               type="button"
                               onClick={() => {
                                 setProductName(p.name);
-                                setUnit(p.unit as any);
-                                setWeightPerUnit(p.weightPerUnit || 1);
+                                if (p.unit) setUnit(p.unit as any);
+                                if (p.weightPerUnit !== undefined) setWeightPerUnit(p.weightPerUnit);
+                                if (p.costPrice) setPrice(p.costPrice);
                                 document.getElementById('price-input')?.focus();
                               }}
-                              className="text-[10px] font-bold px-3 py-1.5 border border-slate-200 hover:border-emerald-500 hover:text-emerald-700 bg-white text-slate-600 rounded-full transition-all flex items-center gap-1.5 shadow-sm shrink-0"
+                              className="text-[10px] font-bold px-3 py-1.5 border border-slate-200 hover:border-emerald-500 hover:text-emerald-700 text-slate-600 bg-white hover:bg-emerald-50/30 rounded-full transition-all flex items-center gap-1.5 shadow-sm shrink-0 cursor-pointer"
                             >
                               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
                               <span>{p.name}</span>
