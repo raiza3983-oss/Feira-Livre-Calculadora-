@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+import { jsPDF } from 'jspdf';
 import logo from '../logo.png';
 import {
   ArrowLeft, Store, Tent, ShoppingBag, Truck,
   Banknote, Info, CheckCircle, Package, Scale, 
   ChevronRight, Calculator, Hash, Layers, Weight,
   Plus, X, Pencil, Share2, Calendar, User, Search,
-  CreditCard, QrCode, Coins, Download
+  CreditCard, QrCode, Coins, Copy
 } from 'lucide-react';
 import { collection, getDocs, limit, query, where } from 'firebase/firestore';
 import { db } from '../firebase';
@@ -20,6 +21,39 @@ const SEEDED_PRODUCTS = [
   "Abobrinha", "Pimentão", "Limão", "Melancia", "Abacaxi",
   "Couve", "Brócolis", "Cheiro Verde", "Mamão", "Uva",
   "Ovo", "Mandioca", "Inhame"
+];
+
+const SEGM_OPTIONS = [
+  "Alimentação Pronta e Lanches",
+  "Antiguidades, Cultura e Lazer.",
+  "Aquarismo e Pequenos Animais",
+  "Armarinhos, Tecidos e Artesanato.",
+  "Carnes, Peixes e Embutidos.",
+  "Conservas, Licores.",
+  "Combustíveis e Acendimento Tradicional",
+  "Cordoaria e Amarração Profissional",
+  "Cosméticos, Perfumaria e Bem-Estar.",
+  "Economia Circular e Sucata",
+  "Eletrônicos, Mídias, Objetos Eletrônicos.",
+  "Embalagens e Descartáveis",
+  "Entretenimento de Rua e Arte Urbana",
+  "Frutas Frescas",
+  "Laticínios e Ovos",
+  "Legumes, Verduras, Ervas e Raízes.",
+  "Mercearia, Grãos e Temperos.",
+  "Misticismo, Religiosidade e Artigos de Fé.",
+  "Mobilidade Urbana",
+  "Plantas e Jardinagem",
+  "Produtos Artesanais",
+  "Produtos Químicos de Limpeza",
+  "Produtos Sazonais e Festivos",
+  "Produtos para Pets e Agropecuária",
+  "Saúde Popular e Ortopedia Básica",
+  "Selaria e Artigos de Couro",
+  "Serviços Rápidos e Logística de Apoio",
+  "Utensílios de Cozinha",
+  "Utilidades para Construção e Pequenos Reparos",
+  "Vestuário, Acessórios e Conveniência."
 ];
 
 const CalculatorScreen = ({
@@ -52,12 +86,26 @@ const CalculatorScreen = ({
     comercializacao?: string;
     comercialUnit?: string;
     comercialText?: string;
+    segmento?: string;
   }>>([]);
   const [itemToDelete, setItemToDelete] = useState<string | null>(null);
   const [productToDelete, setProductToDelete] = useState<string | null>(null);
   const [saleToDelete, setSaleToDelete] = useState<string | null>(null);
   const [comercialUnit, setComercialUnit] = useState<string>('');
   const [comercialText, setComercialText] = useState<string>('');
+
+  // Atividade Comercial Segmento states for Current Item Form
+  const [segmento, setSegmento] = useState<string>('');
+  const [segmentoSearch, setSegmentoSearch] = useState<string>('');
+  const [showSegmentoDropdown, setShowSegmentoDropdown] = useState<boolean>(false);
+
+  // Atividade Comercial Segmento states for Registered Product Form
+  const [productFormSegmento, setProductFormSegmento] = useState<string>('');
+  const [productFormSegmentoSearch, setProductFormSegmentoSearch] = useState<string>('');
+  const [showProductFormSegmentoDropdown, setShowProductFormSegmentoDropdown] = useState<boolean>(false);
+
+  // Filtro de Atividade Comercial na listagem de produtos
+  const [productsFilterSegmento, setProductsFilterSegmento] = useState<string>('');
 
   // Estados adicionados para Histórico, Busca Rápida e Editar
   const [activeTab, setActiveTab] = useState<'calculator' | 'products' | 'history'>('calculator');
@@ -78,6 +126,7 @@ const CalculatorScreen = ({
     weightPerUnit: number;
     costPrice: number;
     createdAt?: string;
+    segmento?: string;
   }>>([]);
   const [productFormId, setProductFormId] = useState<string | null>(null);
   const [productFormName, setProductFormName] = useState<string>('');
@@ -363,6 +412,7 @@ const CalculatorScreen = ({
         unit: productFormUnit,
         weightPerUnit: isNaN(Number(productFormWeightPerUnit)) ? 0 : Number(productFormWeightPerUnit),
         costPrice: Number(productFormCostPrice) || 0,
+        segmento: productFormSegmento || undefined,
       } : p);
       saveProducts(updated);
       setProductFormId(null);
@@ -375,6 +425,7 @@ const CalculatorScreen = ({
         unit: productFormUnit,
         weightPerUnit: isNaN(Number(productFormWeightPerUnit)) ? 0 : Number(productFormWeightPerUnit),
         costPrice: Number(productFormCostPrice) || 0,
+        segmento: productFormSegmento || undefined,
         createdAt: new Date().toLocaleString('pt-BR', {
           dateStyle: 'short',
           timeStyle: 'short'
@@ -389,6 +440,8 @@ const CalculatorScreen = ({
     setProductFormUnit('unit');
     setProductFormWeightPerUnit(0);
     setProductFormCostPrice(0);
+    setProductFormSegmento('');
+    setProductFormSegmentoSearch('');
   };
 
   const confirmDeleteProduct = (id: string) => {
@@ -404,6 +457,8 @@ const CalculatorScreen = ({
     setProductFormUnit(p.unit);
     setProductFormWeightPerUnit(p.weightPerUnit);
     setProductFormCostPrice(p.costPrice);
+    setProductFormSegmento(p.segmento || '');
+    setProductFormSegmentoSearch(p.segmento || '');
   };
 
   const cancelEditProduct = () => {
@@ -413,6 +468,8 @@ const CalculatorScreen = ({
     setProductFormUnit('unit');
     setProductFormWeightPerUnit(0);
     setProductFormCostPrice(0);
+    setProductFormSegmento('');
+    setProductFormSegmentoSearch('');
   };
 
   useEffect(() => {
@@ -478,6 +535,7 @@ const CalculatorScreen = ({
             comercializacao: comercializacao || undefined,
             comercialUnit: comercialUnit || undefined,
             comercialText: comercialText || undefined,
+            segmento: segmento || undefined,
           };
         }
         return item;
@@ -496,6 +554,7 @@ const CalculatorScreen = ({
         comercializacao: comercializacao || undefined,
         comercialUnit: comercialUnit || undefined,
         comercialText: comercialText || undefined,
+        segmento: segmento || undefined,
       };
       setItems([...items, newItem]);
     }
@@ -505,6 +564,8 @@ const CalculatorScreen = ({
     setQuantity(1);
     setComercialUnit('');
     setComercialText('');
+    setSegmento('');
+    setSegmentoSearch('');
   };
 
   const startEditItem = (item: any) => {
@@ -516,6 +577,8 @@ const CalculatorScreen = ({
     setQuantity(item.quantity);
     setComercialUnit(item.comercialUnit || '');
     setComercialText(item.comercialText || '');
+    setSegmento(item.segmento || '');
+    setSegmentoSearch(item.segmento || '');
     
     // Rolar até o formulário de cálculo
     const target = document.getElementById('product-name-input');
@@ -531,6 +594,8 @@ const CalculatorScreen = ({
     setQuantity(1);
     setComercialUnit('');
     setComercialText('');
+    setSegmento('');
+    setSegmentoSearch('');
   };
 
   const removeItem = (id: string) => {
@@ -632,6 +697,9 @@ const CalculatorScreen = ({
       if (item.comercializacao) {
         text += `   • Comercialização: ${item.comercializacao}\n`;
       }
+      if (item.segmento) {
+        text += `   • Segmento: ${item.segmento}\n`;
+      }
       text += `   • Preço Unitário: ${precoUnitText}\n`;
       text += `   • Preço do produto: R$ ${(item.total || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}\n\n`;
     });
@@ -649,50 +717,371 @@ const CalculatorScreen = ({
     return text;
   };
 
-  const shareReceipt = async (sale: any) => {
+  const copyReceiptText = (sale: any) => {
     const text = generateReceiptText(sale);
-    if (navigator.share) {
-      try {
-        await navigator.share({
-          title: `Recibo de ${sale.customerName}`,
-          text: text,
-        });
-      } catch {
-        copyToClipboard(text);
-      }
-    } else {
-      copyToClipboard(text);
-    }
+    copyToClipboard(text);
   };
 
-  const exportSalesText = () => {
+  const copyAllSalesText = () => {
     if (salesHistory.length === 0) return;
     
-    let text = `*1. EXPORTAÇÃO DE VENDAS*\n`;
+    let text = `*RELATÓRIO COMPLETO DE VENDAS*\n`;
+    text += `━━━━━━━━━━━━━━━━━━━━\n`;
+    const currentDateStr = new Date().toLocaleDateString('pt-BR');
+    const currentTimeStr = new Date().toLocaleTimeString('pt-BR');
+    text += `📅 *Gerado em:* ${currentDateStr} às ${currentTimeStr}\n`;
+    text += `📦 *Total de Vendas:* ${salesHistory.length}\n`;
+    const totalRev = salesHistory.reduce((acc, s) => acc + (s && typeof s.total === 'number' ? s.total : 0), 0);
+    text += `💰 *Faturamento Total:* R$ ${totalRev.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}\n`;
     text += `━━━━━━━━━━━━━━━━━━━━\n\n`;
-    
+
     salesHistory.forEach((sale, index) => {
       const orderNumber = salesHistory.length - index;
-      text += `📦 *Pedido nº ${orderNumber}*\n`;
-      text += `👤 *Cliente:* ${sale.customerName || 'Cliente sem nome'}\n`;
+      const titleText = (!sale.customerName || sale.customerName === 'Cliente Avulso')
+        ? (SHOP_TYPES.find(t => t.id === sale.shopType)?.label || 'Feira Livre')
+        : sale.customerName;
+
+      text += `📦 *PEDIDO Nº ${orderNumber} — ${titleText}*\n`;
       text += `📅 *Data:* ${sale.date || ''}\n`;
-      text += `💳 *Forma de Pagamento:* ${obterLabelPagamento(sale.paymentMethod)}\n`;
-      text += `💵 *Total:* R$ ${(sale.total || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}\n`;
-      if (sale.amountReceived > 0) {
-        text += `🪙 *Pago:* R$ ${(sale.amountReceived || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })} | *Troco:* R$ ${(sale.change || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}\n`;
+      if (sale.paymentMethod) {
+        text += `💳 *Forma de Pagamento:* ${obterLabelPagamento(sale.paymentMethod)}\n`;
       }
-      text += `🛒 *Produtos:*\n`;
+      
       const saleItems = Array.isArray(sale.items) ? sale.items : [];
-      saleItems.forEach((item: any, itemIdx: number) => {
-        text += `   ${itemIdx + 1}. ${item.name || 'Produto'} — Qtd: ${item.quantity || 0} (${obterLabelMedida(item.weightPerUnit, item.unit)}: ${formatarMercadoria(item.weightPerUnit, item.unit)}) — total: R$ ${(item.total || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}\n`;
+      saleItems.forEach((item: any, idx: number) => {
+        if (!item) return;
+        const weightText = formatarMercadoria(item.weightPerUnit || 0, item.unit || 'unit');
+        const weightLabel = obterLabelMedida(item.weightPerUnit || 0, item.unit || 'unit');
+        
+        text += `   ${idx + 1}. *${item.name || 'Produto'}*\n`;
+        text += `      • ${item.quantity <= 1 ? "Quantidade" : "Quantidades"}: ${item.quantity || 0}\n`;
+        text += `      • ${weightLabel}: ${weightText}\n`;
+        if (item.comercializacao) {
+          text += `      • Comercialização: ${item.comercializacao}\n`;
+        }
+        if (item.segmento) {
+          text += `      • Segmento: ${item.segmento}\n`;
+        }
+        const precoUnitRatio = item.unit === 'gram' ? 1000 : 1;
+        const precoUnitText = `${formatarMercadoria(precoUnitRatio, item.unit || 'unit')} — R$ ${(item.price || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
+        text += `      • Preço Unitário: ${precoUnitText}\n`;
+        text += `      • Preço do produto: R$ ${(item.total || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}\n`;
       });
+      
+      text += `💵 *Total do Pedido:* R$ ${(sale.total || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}\n`;
+      if (sale.amountReceived > 0) {
+        text += `   • Pago: R$ ${(sale.amountReceived || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })} | Troco: R$ ${(sale.change || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}\n`;
+      }
       text += `━━━━━━━━━━━━━━━━━━━━\n\n`;
     });
-    
-    text += `📈 *Faturamento Acumulado:* R$ ${salesHistory.reduce((acc, s) => acc + (s.total || 0), 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}\n`;
-    text += `Gerado em: ${new Date().toLocaleDateString('pt-BR')} ${new Date().toLocaleTimeString('pt-BR')}`;
-    
+
     copyToClipboard(text);
+  };
+
+  const getSaleCardHeight = (sale: any) => {
+    const saleItems = Array.isArray(sale.items) ? sale.items : [];
+    // Header section:
+    // top margin (6) + circle badge / title / date / payment (19) + separator & label spacing (8) = 33
+    let height = 33;
+
+    // Items list:
+    saleItems.forEach((item: any) => {
+      let itemCardHeight = 24;
+      if (item.comercializacao) itemCardHeight += 4;
+      if (item.segmento) itemCardHeight += 4;
+      height += itemCardHeight + 3; // card height + padding
+    });
+
+    // Divider line, Pago / Troco, Total section, and bottom padding:
+    height += 12; // bottom section padding and margin
+    return height;
+  };
+
+  const drawSaleCard = (doc: any, sale: any, orderNumber: number, startY: number) => {
+    const saleItems = Array.isArray(sale.items) ? sale.items : [];
+    const cardHeight = getSaleCardHeight(sale);
+
+    // Draw the main card background box
+    doc.setFillColor(255, 255, 255); // White container card
+    doc.setDrawColor(226, 232, 240); // slate-200 border
+    doc.setLineWidth(0.4);
+    // Draw rounded rect with rx=6, ry=6
+    doc.roundedRect(20, startY, 170, cardHeight, 6, 6, "FD");
+
+    let cardY = startY + 6;
+
+    // Order badge circle
+    doc.setFillColor(236, 253, 245); // emerald-50 bg
+    doc.setDrawColor(209, 250, 229); // emerald-100 border
+    doc.setLineWidth(0.2);
+    doc.circle(28, cardY + 2.5, 4.5, "FD");
+
+    // Order number text
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(9);
+    doc.setTextColor(5, 150, 105); // emerald-600
+    doc.text(String(orderNumber), 28, cardY + 5.6, { align: "center" });
+
+    // Pedido title text
+    const titleText = (!sale.customerName || sale.customerName === 'Cliente Avulso')
+      ? (SHOP_TYPES.find(t => t.id === sale.shopType)?.label || 'Feira Livre')
+      : sale.customerName;
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(11);
+    doc.setTextColor(30, 41, 59); // slate-800
+    doc.text(`Pedido nº {orderNumber} — {titleText}`.replace("{orderNumber}", String(orderNumber)).replace("{titleText}", titleText), 36, cardY + 2.5);
+
+    // Subtitle Date/Hour
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(8.5);
+    doc.setTextColor(148, 163, 184); // slate-400
+    doc.text(sale.date || "", 36, cardY + 7);
+
+    // Payment method badge
+    if (sale.paymentMethod) {
+      const payLabel = obterLabelPagamento(sale.paymentMethod);
+      doc.setFillColor(241, 245, 249); // slate-100 bg
+      doc.setDrawColor(226, 232, 240); // slate-200 border
+      doc.setLineWidth(0.2);
+      doc.roundedRect(36, cardY + 9.5, 30, 4.5, 1.5, 1.5, "FD");
+
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(7);
+      doc.setTextColor(71, 85, 105); // slate-600
+      doc.text(payLabel.toUpperCase(), 51, cardY + 12.8, { align: "center" });
+    }
+
+    // Top Right price total of the sale
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9.5);
+    doc.setTextColor(148, 163, 184); // slate-400
+    doc.text("R$", 153, cardY + 5.5);
+
+    const saleTotal = sale.total || 0;
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(16);
+    doc.setTextColor(16, 185, 129); // emerald-500
+    doc.text(saleTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 }), 184, cardY + 5.5, { align: "right" });
+
+    // Top section horizontal divider line
+    doc.setDrawColor(241, 245, 249); // slate-100 line
+    doc.setLineWidth(0.3);
+    doc.line(24, cardY + 18, 186, cardY + 18);
+
+    cardY += 23;
+
+    // "Produtos Vendidos" category label list
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(8);
+    doc.setTextColor(148, 163, 184); // slate-400
+    doc.text(saleItems.length <= 1 ? "PRODUTO VENDIDO:" : "PRODUTOS VENDIDOS:", 24, cardY);
+
+    cardY += 4;
+
+    // Print all product details as individual grey cards
+    saleItems.forEach((item: any, idx: number) => {
+      const itemTotal = item.total || 0;
+      const itemPrice = item.price || 0;
+
+      let itemCardHeight = 24;
+      if (item.comercializacao) itemCardHeight += 4;
+      if (item.segmento) itemCardHeight += 4;
+
+      // Card container outline for product
+      doc.setFillColor(248, 250, 252); // slate-50
+      doc.setDrawColor(241, 245, 249); // slate-100 border
+      doc.roundedRect(24, cardY, 162, itemCardHeight, 3.5, 3.5, "FD");
+
+      let innerY = cardY + 4.5;
+
+      const drawItemField = (label: string, value: string, isEmerald = false, isAmber = false) => {
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(8);
+        doc.setTextColor(100, 116, 139); // slate-500
+        doc.text(label, 28, innerY);
+
+        doc.setFont("helvetica", "bold");
+        if (isEmerald) {
+          doc.setTextColor(5, 150, 105); // emerald-600
+        } else if (isAmber) {
+          doc.setTextColor(180, 83, 9); // amber-700
+        } else {
+          doc.setTextColor(30, 41, 59); // slate-800
+        }
+        doc.text(value, 82, innerY);
+        innerY += 4;
+      };
+
+      const isSingular = item.quantity <= 1;
+      drawItemField(isSingular ? "Quantidade:" : "Quantidades:", `${item.quantity || 0}`);
+      drawItemField(isSingular ? "Produto:" : "Produtos:", `${item.name || "Produto"}`);
+      drawItemField("Preço unitário:", `R$ ${itemPrice.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`);
+      drawItemField(isSingular ? "Total:" : "Totais:", `R$ ${itemTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, true);
+      
+      const formattedWeight = formatarMercadoria(item.weightPerUnit || 0, item.unit || "unit");
+      drawItemField(isSingular ? "Peso ou Medida:" : "Pesos ou Medidas:", formattedWeight);
+
+      if (item.comercializacao) {
+        drawItemField("Comercialização / Peso ou Medida:", item.comercializacao, true);
+      }
+      if (item.segmento) {
+        drawItemField("Segmento / Categoria de Venda:", item.segmento, false, true);
+      }
+
+      cardY += itemCardHeight + 3;
+    });
+
+    // Horizontal line above payment details
+    doc.setDrawColor(241, 245, 249);
+    doc.setLineWidth(0.3);
+    doc.line(24, cardY, 186, cardY);
+    cardY += 5;
+
+    // Bottom left section metadata
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(8);
+    doc.setTextColor(148, 163, 184); // slate-400
+    if (sale.amountReceived > 0) {
+      const infoText = `PAGO: R$ ${sale.amountReceived.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}   |   TROCO: R$ ${sale.change.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
+      doc.text(infoText, 24, cardY);
+    } else {
+      doc.text("SEM CÁLCULO DE TROCO", 24, cardY);
+    }
+
+    return startY + cardHeight;
+  };
+
+  const downloadPDFReceipt = (sale: any) => {
+    const doc = new jsPDF({
+      orientation: 'portrait',
+      unit: 'mm',
+      format: 'a4'
+    });
+
+    let y = 15;
+
+    // Decorative Header brand
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(16);
+    doc.setTextColor(16, 185, 129); // emerald-500
+    doc.text("RECIBO DE VENDA", 20, y);
+
+    const currentDateStr = new Date().toLocaleDateString('pt-BR');
+    const currentTimeStr = new Date().toLocaleTimeString('pt-BR');
+    
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(8.5);
+    doc.setTextColor(148, 163, 184); // slate-400
+    doc.text(`Gerado em: ${currentDateStr} às ${currentTimeStr}`, 190, y, { align: "right" });
+
+    y += 5;
+    doc.setDrawColor(226, 232, 240); // slate-200
+    doc.setLineWidth(0.5);
+    doc.line(20, y, 190, y);
+    
+    y += 10;
+
+    // Draw the sale card matching UI styling perfectly
+    y = drawSaleCard(doc, sale, 1, y);
+
+    y += 12;
+    // Thank you message
+    doc.setFont("helvetica", "italic");
+    doc.setFontSize(9.5);
+    doc.setTextColor(100, 116, 139); // slate-500
+    doc.text("Muito obrigado pela preferência! 😊🥬🍍", 105, y, { align: "center" });
+
+    // File name: recibo_[cliente]_[data].pdf
+    const cleanCustomerName = (sale.customerName || "cliente")
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "") 
+      .replace(/[^a-z0-9]/g, "-") 
+      .replace(/-+/g, "-") 
+      .replace(/^-|-$/g, ""); 
+    
+    const formattedDate = (sale.date || "")
+      .split(" ")[0] 
+      .replace(/\//g, "-");
+
+    const filename = `recibo_${cleanCustomerName || "cliente"}_${formattedDate || "venda"}.pdf`;
+    doc.save(filename);
+  };
+
+  const downloadPDFAllSales = () => {
+    if (salesHistory.length === 0) return;
+
+    const doc = new jsPDF({
+      orientation: 'portrait',
+      unit: 'mm',
+      format: 'a4'
+    });
+
+    let y = 15;
+
+    // Header Title
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(16);
+    doc.setTextColor(16, 185, 129); // emerald-500
+    doc.text("RELATÓRIO COMPLETO DE VENDAS", 20, y);
+
+    const currentDateStr = new Date().toLocaleDateString('pt-BR');
+    const currentTimeStr = new Date().toLocaleTimeString('pt-BR');
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(8.5);
+    doc.setTextColor(148, 163, 184); // slate-400
+    doc.text(`Gerado em: ${currentDateStr} às ${currentTimeStr}`, 190, y, { align: "right" });
+
+    y += 5;
+    doc.setDrawColor(226, 232, 240); // slate-200
+    doc.setLineWidth(0.5);
+    doc.line(20, y, 190, y);
+    
+    y += 10;
+
+    // Performance Overview Stats Box
+    const totalRevenue = salesHistory.reduce((acc, s) => acc + (s && typeof s.total === 'number' ? s.total : 0), 0);
+    
+    doc.setFillColor(248, 250, 252); // slate-50
+    doc.setDrawColor(226, 232, 240); // slate-200 border
+    doc.setLineWidth(0.4);
+    doc.roundedRect(20, y, 170, 18, 4, 4, "FD");
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(9);
+    doc.setTextColor(115, 115, 115); // neutral-500
+    doc.text(`Total de Vendas: ${salesHistory.length}`, 25, y + 10.5);
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(11);
+    doc.setTextColor(16, 185, 129); // emerald-500
+    doc.text(`Faturamento: R$ ${totalRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, 105, y + 10.5);
+
+    y += 28;
+
+    // Iterate through sales from latest to oldest
+    salesHistory.forEach((sale, i) => {
+      const orderNumber = salesHistory.length - i;
+      const cardHeightEst = getSaleCardHeight(sale);
+
+      // Overflow safe boundary check
+      if (y + cardHeightEst > 275) {
+        doc.addPage();
+        y = 20;
+      }
+
+      // Draw the sale card exactly matching the HTML screen style!
+      y = drawSaleCard(doc, sale, orderNumber, y);
+
+      // Margin after the card before starting next one
+      y += 8;
+    });
+
+    const cleanDate = currentDateStr.replace(/\//g, "-");
+    const filename = `relatorio_vendas_completo_${cleanDate}.pdf`;
+    doc.save(filename);
   };
 
   const copyToClipboard = (text: string) => {
@@ -1003,14 +1392,25 @@ const CalculatorScreen = ({
                       </div>
                     </div>
 
-                    {/* Dinâmica de Comercialização Opcional */}
-                    <div className="space-y-3 pt-4 border-t border-slate-200/60 pb-2">
-                      <div className="flex items-center gap-2">
-                        <span className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">Coluna Opcional - Dinâmica de Comercialização</span>
-                        <span className="text-[8px] bg-slate-100 text-slate-500 py-0.5 px-2 rounded-full font-bold uppercase">Demonstrativo</span>
+                    {/* Dinâmica de Comercialização / Atividade Comercial Opcional */}
+                    <div className="space-y-3 pt-4 border-t border-slate-200/60 pb-2 relative">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">Colunas Opcionais — Comercialização & Atividade</span>
+                          <span className="text-[8px] bg-emerald-50 text-emerald-700 py-0.5 px-2 rounded-full font-bold uppercase">Personalize</span>
+                        </div>
+                        {segmento && (
+                          <button 
+                            type="button" 
+                            onClick={() => { setSegmento(''); setSegmentoSearch(''); }}
+                            className="text-[9px] font-bold text-rose-500 hover:text-rose-700 transition"
+                          >
+                            Limpar Segmento
+                          </button>
+                        )}
                       </div>
                       
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <div className="space-y-1">
                           <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Menu Comercialização</label>
                           <select
@@ -1040,6 +1440,64 @@ const CalculatorScreen = ({
                             className="w-full p-4 bg-white border-2 border-slate-100 rounded-[16px] outline-none font-bold text-sm text-slate-800 shadow-sm focus:border-emerald-500 transition-colors disabled:opacity-50 disabled:bg-slate-50"
                           />
                         </div>
+
+                        <div className="space-y-1 relative">
+                          <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Atividade / Segmento</label>
+                          <div className="relative">
+                            <input
+                              type="text"
+                              placeholder="Pesquisar segmento..."
+                              value={showSegmentoDropdown ? segmentoSearch : (segmento || "")}
+                              onFocus={() => {
+                                setShowSegmentoDropdown(true);
+                                setSegmentoSearch(segmento);
+                              }}
+                              onChange={(e) => {
+                                setSegmentoSearch(e.target.value);
+                              }}
+                              className="w-full p-4 bg-white border-2 border-slate-100 rounded-[16px] outline-none font-bold text-sm text-slate-800 shadow-sm focus:border-emerald-500 transition-colors"
+                            />
+                            <div className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-2">
+                              <Search size={16} className="text-slate-400" />
+                            </div>
+                          </div>
+
+                          {showSegmentoDropdown && (
+                            <div className="absolute z-50 left-0 right-0 mt-1 max-h-56 overflow-y-auto bg-white border border-slate-200 rounded-xl shadow-xl overflow-x-hidden divide-y divide-slate-100">
+                              <div className="p-2 border-b border-slate-100 font-bold text-[9px] text-slate-400 bg-slate-50">
+                                SELECIONE O SEGMENTO:
+                              </div>
+                              <div className="divide-y divide-slate-50">
+                                {SEGM_OPTIONS.filter((opt) => 
+                                  opt.toLowerCase().includes(segmentoSearch.toLowerCase())
+                                ).map((opt) => (
+                                  <button
+                                    key={opt}
+                                    type="button"
+                                    onClick={() => {
+                                      setSegmento(opt);
+                                      setSegmentoSearch(opt);
+                                      setShowSegmentoDropdown(false);
+                                    }}
+                                    className="w-full text-left font-semibold text-xs text-slate-700 px-4 py-2.5 hover:bg-emerald-50 hover:text-emerald-800 transition-colors duration-150 flex items-center justify-between cursor-pointer border-0 bg-transparent"
+                                  >
+                                    <span>{opt}</span>
+                                    {segmento === opt && (
+                                      <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0"></span>
+                                    )}
+                                  </button>
+                                ))}
+                                {SEGM_OPTIONS.filter((opt) => 
+                                  opt.toLowerCase().includes(segmentoSearch.toLowerCase())
+                                ).length === 0 && (
+                                  <div className="p-4 text-center text-xs text-slate-400 italic">
+                                    Nenhum segmento encontrado...
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                        </div>
                       </div>
 
                       {comercialUnit && (
@@ -1048,6 +1506,13 @@ const CalculatorScreen = ({
                             {formatarComercializacao(comercialUnit, comercialText)}
                           </span>
                         </p>
+                      )}
+
+                      {showSegmentoDropdown && (
+                        <div 
+                          className="fixed inset-0 z-40 outline-none" 
+                          onClick={() => setShowSegmentoDropdown(false)}
+                        />
                       )}
                     </div>
 
@@ -1135,6 +1600,9 @@ const CalculatorScreen = ({
                                   <span>{obterLabelMedida(item.weightPerUnit, item.unit)}: {formatarMercadoria(item.weightPerUnit, item.unit)}</span>
                                   {item.comercializacao && (
                                     <span className="text-emerald-600 font-extrabold normal-case">Comercialização: {item.comercializacao}</span>
+                                  )}
+                                  {item.segmento && (
+                                    <span className="text-amber-700 font-extrabold normal-case">Segmento: {item.segmento}</span>
                                   )}
                                   <span className="text-slate-400">Preço Unitário: {formatarMercadoria(item.unit === 'gram' ? 1000 : 1, item.unit)} — R$ {item.price.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
                                 </div>
@@ -1339,6 +1807,9 @@ const CalculatorScreen = ({
                             {item.comercializacao && (
                               <span className="text-[9px] text-emerald-100 font-semibold ml-1 block">Comercialização: {item.comercializacao}</span>
                             )}
+                            {item.segmento && (
+                              <span className="text-[9px] text-amber-200 font-semibold ml-1 block">Segmento: {item.segmento}</span>
+                            )}
                             <div className="flex flex-col ml-1 mt-1">
                               <span className="text-[8px] text-emerald-200/85 uppercase font-black tracking-wider">PREÇO DO PRODUTO</span>
                               <span className="text-emerald-300 font-bold text-xs" style={{ color: '#a7f3d0' }}>R$ {itemTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
@@ -1497,12 +1968,95 @@ const CalculatorScreen = ({
                   </div>
                 </div>
 
+                {/* Atividade Comercial / Segmento para Cadastro de Produto */}
+                <div className="space-y-1.5 relative">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 ml-1">ATIVIDADE COMERCIAL / SEGMENTO (OPCIONAL)</label>
+                    {productFormSegmento && (
+                      <button 
+                        type="button" 
+                        onClick={() => { setProductFormSegmento(''); setProductFormSegmentoSearch(''); }}
+                        className="text-[9px] font-bold text-rose-500 hover:text-rose-700 transition"
+                      >
+                        Limpar
+                      </button>
+                    )}
+                  </div>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      placeholder="Pesquisar segmento..."
+                      value={showProductFormSegmentoDropdown ? productFormSegmentoSearch : (productFormSegmento || "")}
+                      onFocus={() => {
+                        setShowProductFormSegmentoDropdown(true);
+                        setProductFormSegmentoSearch(productFormSegmento);
+                      }}
+                      onChange={(e) => {
+                        setProductFormSegmentoSearch(e.target.value);
+                      }}
+                      className="w-full py-3 px-4 bg-slate-50 border border-slate-200 rounded-xl font-sans font-semibold text-slate-800 focus:outline-none focus:border-emerald-500 focus:bg-white text-xs transition-colors"
+                    />
+                    <div className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400">
+                      <Search size={14} />
+                    </div>
+                  </div>
 
+                  {showProductFormSegmentoDropdown && (
+                    <div className="absolute z-50 left-0 right-0 mt-1 max-h-48 overflow-y-auto bg-white border border-slate-250 border-slate-200 rounded-xl shadow-xl divide-y divide-slate-100">
+                      <div className="p-1.5 px-3 border-b border-slate-100 font-bold text-[8px] text-slate-400 bg-slate-50">
+                        OPÇÕES DE SEGMENTO:
+                      </div>
+                      <div className="divide-y divide-slate-50">
+                        {SEGM_OPTIONS.filter((opt) => 
+                          opt.toLowerCase().includes(productFormSegmentoSearch.toLowerCase())
+                        ).map((opt) => (
+                          <button
+                            key={opt}
+                            type="button"
+                            onClick={() => {
+                              setProductFormSegmento(opt);
+                              setProductFormSegmentoSearch(opt);
+                              setShowProductFormSegmentoDropdown(false);
+                            }}
+                            className="w-full text-left font-semibold text-[11px] text-slate-700 px-3 py-2 cursor-pointer hover:bg-emerald-50 hover:text-emerald-800 transition-colors flex items-center justify-between border-0 bg-transparent"
+                          >
+                            <span>{opt}</span>
+                            {productFormSegmento === opt && (
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0"></span>
+                            )}
+                          </button>
+                        ))}
+                        {SEGM_OPTIONS.filter((opt) => 
+                          opt.toLowerCase().includes(productFormSegmentoSearch.toLowerCase())
+                        ).length === 0 && (
+                          <div className="p-3 text-center text-xs text-slate-400 italic">
+                            Nenhum segmento encontrado...
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {showProductFormSegmentoDropdown && (
+                    <div 
+                      className="fixed inset-0 z-40 outline-none" 
+                      onClick={() => setShowProductFormSegmentoDropdown(false)}
+                    />
+                  )}
+                </div>
 
               </div>
 
               {/* Pré-visualização com cálculo de desembolso no formulário */}
               <div className="bg-slate-50 border border-slate-200/60 rounded-2xl p-4.5 space-y-2 text-[11px] font-sans text-slate-600 shadow-inner">
+                {productFormSegmento && (
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold text-slate-500">Segmento:</span>
+                    <span className="font-bold text-amber-700">
+                      {productFormSegmento}
+                    </span>
+                  </div>
+                )}
                 <div className="flex items-center justify-between">
                   <span className="font-semibold text-slate-500">Produto:</span>
                   <span className="font-bold text-slate-800">
@@ -1552,71 +2106,105 @@ const CalculatorScreen = ({
 
             {/* Right side: Stock list */}
             <div className="lg:col-span-8 bg-white rounded-[32px] p-6 md:p-8 border border-slate-100 shadow-[0_4px_12px_rgba(0,0,0,0.08)] space-y-6">
-              <div className="flex items-center justify-between pb-4 border-b border-slate-100">
-                <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 bg-emerald-50 rounded-lg flex items-center justify-center text-emerald-600">
-                    <Layers size={16} />
-                  </div>
-                  <h3 className="text-sm font-black text-slate-850 uppercase tracking-wider">Produtos Cadastrados ({products.length})</h3>
-                </div>
-              </div>
+              {(() => {
+                const filteredProducts = productsFilterSegmento
+                  ? products.filter(p => p.segmento === productsFilterSegmento)
+                  : products;
 
-              {products.length > 0 ? (
-                <div className="space-y-4 max-h-[500px] overflow-y-auto pr-2">
-                  {products.map((p) => {
-                    const metrics = getProductMetrics(p);
-                    const isAvailable = metrics.remainingContent > 0;
-
-                    return (
-                      <div key={p.id} className="flex flex-col sm:flex-row sm:items-center justify-between p-5 rounded-2xl bg-slate-50 border border-slate-100 hover:shadow-sm transition-all gap-4">
-                        <div className="space-y-2 flex-grow">
-                          <div className="flex flex-wrap items-center gap-2.5">
-                            <span className="font-bold text-slate-800 text-sm">{p.name}</span>
-                            
-                            <div className="flex items-center gap-1 shrink-0">
-                              <button
-                                onClick={() => startEditProduct(p)}
-                                className="w-6 h-6 text-slate-400 hover:text-emerald-500 rounded-md flex items-center justify-center transition-colors bg-transparent border-0 cursor-pointer"
-                                title="Editar Produto"
-                              >
-                                <Pencil size={11} />
-                              </button>
-                              <button
-                                onClick={() => setProductToDelete(p.id)}
-                                className="w-6 h-6 text-slate-400 hover:text-red-500 rounded-md flex items-center justify-center transition-colors bg-transparent border-0 cursor-pointer"
-                                title="Excluir Produto"
-                              >
-                                <X size={11} />
-                              </button>
-                            </div>
-                          </div>
-
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1.5 text-[10px] font-bold text-slate-500 uppercase">
-                            <span>
-                              {p.quantity <= 1 ? "Quantidade" : "Quantidades"}: <span className="text-slate-900 normal-case">{p.quantity}</span>
-                            </span>
-                            <span>
-                              Desembolso: <span className="text-emerald-600 normal-case">R$ {(p.costPrice * p.quantity).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
-                            </span>
-                            <span>
-                              Data/Hora: <span className="text-slate-900 normal-case">{p.createdAt}</span>
-                            </span>
-                            <span className="sm:col-span-2">
-                              Preço Unitário: <span className="text-slate-900 normal-case">R$ {p.costPrice.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
-                            </span>
-                          </div>
+                return (
+                  <>
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 bg-emerald-50 rounded-lg flex items-center justify-center text-emerald-600">
+                          <Layers size={16} />
                         </div>
+                        <h3 className="text-sm font-black text-slate-850 uppercase tracking-wider">Produtos Cadastrados ({filteredProducts.length})</h3>
                       </div>
-                    );
-                  })}
-                </div>
-              ) : (
-                <div className="text-center py-12 text-slate-400">
-                  <Package className="mx-auto mb-3 opacity-30" size={36} />
-                  <p className="text-xs font-semibold uppercase tracking-wider">Nenhum produto cadastrado no estoque</p>
-                  <p className="text-[10px] mt-1 text-slate-400 normal-case font-medium">Adicione seu primeiro produto usando o formulário ao lado para começar o controle!</p>
-                </div>
-              )}
+
+                      {/* Filtro de Atividade Comercial */}
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider shrink-0">Filtrar:</span>
+                        <select
+                          value={productsFilterSegmento}
+                          onChange={(e) => setProductsFilterSegmento(e.target.value)}
+                          className="py-1.5 px-3 bg-slate-50 border border-slate-200 rounded-xl text-[10px] font-bold text-slate-700 outline-none focus:border-emerald-500 transition-colors w-32 sm:w-40 max-w-[160px] truncate cursor-pointer"
+                          style={{ maxWidth: '160px' }}
+                        >
+                          <option value="">Todos os Segmentos</option>
+                          {SEGM_OPTIONS.map((opt) => (
+                            <option key={opt} value={opt} className="font-sans font-semibold text-xs">
+                              {opt}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+
+                    {filteredProducts.length > 0 ? (
+                      <div className="space-y-4 max-h-[500px] overflow-y-auto pr-2">
+                        {filteredProducts.map((p) => {
+                          const metrics = getProductMetrics(p);
+                          // eslint-disable-next-line @typescript-eslint/no-unused-vars
+                          const isAvailable = metrics.remainingContent > 0;
+
+                          return (
+                            <div key={p.id} className="flex flex-col sm:flex-row sm:items-center justify-between p-5 rounded-2xl bg-slate-50 border border-slate-100 hover:shadow-sm transition-all gap-4">
+                              <div className="space-y-2 flex-grow">
+                                <div className="flex flex-wrap items-center gap-2.5">
+                                  <span className="font-bold text-slate-800 text-sm">{p.name}</span>
+                                  
+                                  <div className="flex items-center gap-1 shrink-0">
+                                    <button
+                                      onClick={() => startEditProduct(p)}
+                                      className="w-6 h-6 text-slate-400 hover:text-emerald-500 rounded-md flex items-center justify-center transition-colors bg-transparent border-0 cursor-pointer"
+                                      title="Editar Produto"
+                                    >
+                                      <Pencil size={11} />
+                                    </button>
+                                    <button
+                                      onClick={() => setProductToDelete(p.id)}
+                                      className="w-6 h-6 text-slate-400 hover:text-red-500 rounded-md flex items-center justify-center transition-colors bg-transparent border-0 cursor-pointer"
+                                      title="Excluir Produto"
+                                    >
+                                      <X size={11} />
+                                    </button>
+                                  </div>
+                                </div>
+
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1.5 text-[10px] font-bold text-slate-500 uppercase">
+                                  <span>
+                                    {p.quantity <= 1 ? "Quantidade" : "Quantidades"}: <span className="text-slate-900 normal-case">{p.quantity}</span>
+                                  </span>
+                                  <span>
+                                    Desembolso: <span className="text-emerald-600 normal-case">R$ {(p.costPrice * p.quantity).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                                  </span>
+                                  {p.segmento && (
+                                    <span className="sm:col-span-2">
+                                      Segmento: <span className="text-[9px] font-black tracking-wide text-amber-800 bg-amber-50 px-2.5 py-0.5 rounded-md border border-amber-100 normal-case">{p.segmento}</span>
+                                    </span>
+                                  )}
+                                  <span>
+                                    Data/Hora: <span className="text-slate-900 normal-case">{p.createdAt}</span>
+                                  </span>
+                                  <span className="sm:col-span-2">
+                                    Preço Unitário: <span className="text-slate-900 normal-case">R$ {p.costPrice.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div className="text-center py-12 text-slate-400">
+                        <Package className="mx-auto mb-3 opacity-30" size={36} />
+                        <p className="text-xs font-semibold uppercase tracking-wider">Nenhum produto cadastrado no estoque</p>
+                        <p className="text-[10px] mt-1 text-slate-400 normal-case font-medium">Adicione seu primeiro produto usando o formulário ao lado para começar o controle!</p>
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
             </div>
           </div>
 
@@ -1701,10 +2289,10 @@ const CalculatorScreen = ({
               {salesHistory.length > 0 ? (
                 <>
                   <button
-                    onClick={exportSalesText}
-                    className="py-2.5 px-6 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all w-full text-center font-bold border-0 flex items-center justify-center gap-1.5 shadow-sm"
+                    onClick={copyAllSalesText}
+                    className="py-2.5 px-6 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all w-full text-center font-bold border-0 flex items-center justify-center gap-1.5 shadow-sm cursor-pointer"
                   >
-                    <Download size={12} /> Exportar Vendas
+                    <Copy size={12} /> Copiar Lista Completa / Recibos
                   </button>
                   <button
                     onClick={() => {
@@ -1838,6 +2426,12 @@ const CalculatorScreen = ({
                                   Comercialização / Peso ou Medida: <span className="text-emerald-700 font-extrabold">{item.comercializacao}</span>
                                 </span>
                               )}
+
+                              {item.segmento && (
+                                <span className="text-[10px] text-slate-500 font-semibold block">
+                                  Segmento / Categoria de Venda: <span className="text-amber-700 font-extrabold">{item.segmento}</span>
+                                </span>
+                              )}
                             </div>
                           );
                         })}
@@ -1854,16 +2448,16 @@ const CalculatorScreen = ({
                         )}
                       </div>
                       
-                      <div className="flex items-center gap-3">
+                      <div className="flex flex-wrap items-center gap-2.5">
                         <button
-                          onClick={() => shareReceipt(sale)}
-                          className="py-2.5 px-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-black text-[10px] uppercase tracking-widest transition-all flex items-center gap-2 shadow-sm shadow-emerald-100 border-0"
+                          onClick={() => copyReceiptText(sale)}
+                          className="py-2.5 px-3.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-black text-[10px] uppercase tracking-widest transition-all flex items-center gap-2 shadow-sm shadow-emerald-100 border-0 cursor-pointer"
                         >
-                          <Share2 size={12} /> WhatsApp / Compartilhar
+                          <Copy size={12} /> Copiar Minha Venda / Recibo
                         </button>
                         <button
                           onClick={() => deleteSaleFromHistory(sale.id)}
-                          className="w-10 h-10 flex items-center justify-center text-slate-400 hover:text-red-500 rounded-xl transition-all bg-transparent border-0"
+                          className="w-10 h-10 flex items-center justify-center text-slate-400 hover:text-red-500 rounded-xl transition-all bg-transparent border-0 cursor-pointer"
                           title="Excluir venda do histórico"
                         >
                           <X size={14} />
