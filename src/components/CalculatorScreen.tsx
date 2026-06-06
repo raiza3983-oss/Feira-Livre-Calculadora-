@@ -5,7 +5,7 @@ import logo from '../logo.png';
 import {
   ArrowLeft, Store, Tent, ShoppingBag, Truck,
   Banknote, Info, CheckCircle, Package, Scale, 
-  ChevronRight, Calculator, Hash, Layers, Weight,
+  ChevronRight, ChevronDown, Calculator, Hash, Layers, Weight,
   Plus, X, Pencil, Share2, Calendar, User, Search,
   CreditCard, QrCode, Coins, Copy
 } from 'lucide-react';
@@ -73,6 +73,7 @@ const CalculatorScreen = ({
   );
   const [weightPerUnit, setWeightPerUnit] = useState<number>(initialData?.weightPerUnit || 1);
   const [productName, setProductName] = useState('');
+  const [showCalcProductDropdown, setShowCalcProductDropdown] = useState<boolean>(false);
   const [shopType, setShopType] = useState<string>('feira');
   const [amountReceived, setAmountReceived] = useState<number>(0);
   const [items, setItems] = useState<Array<{
@@ -87,6 +88,7 @@ const CalculatorScreen = ({
     comercialUnit?: string;
     comercialText?: string;
     segmento?: string;
+    tamanho?: string;
   }>>([]);
   const [itemToDelete, setItemToDelete] = useState<string | null>(null);
   const [productToDelete, setProductToDelete] = useState<string | null>(null);
@@ -98,17 +100,19 @@ const CalculatorScreen = ({
   const [segmento, setSegmento] = useState<string>('');
   const [segmentoSearch, setSegmentoSearch] = useState<string>('');
   const [showSegmentoDropdown, setShowSegmentoDropdown] = useState<boolean>(false);
+  const [tamanho, setTamanho] = useState<string>('');
 
   // Atividade Comercial Segmento states for Registered Product Form
   const [productFormSegmento, setProductFormSegmento] = useState<string>('');
   const [productFormSegmentoSearch, setProductFormSegmentoSearch] = useState<string>('');
   const [showProductFormSegmentoDropdown, setShowProductFormSegmentoDropdown] = useState<boolean>(false);
+  const [productFormTamanho, setProductFormTamanho] = useState<string>('');
 
   // Filtro de Atividade Comercial na listagem de produtos
   const [productsFilterSegmento, setProductsFilterSegmento] = useState<string>('');
 
   // Estados adicionados para Histórico, Busca Rápida e Editar
-  const [activeTab, setActiveTab] = useState<'calculator' | 'products' | 'history'>('calculator');
+  const [activeTab, setActiveTab] = useState<'calculator' | 'products' | 'history' | 'quantity'>('calculator');
   const [customerName, setCustomerName] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<string>('dinheiro');
   const [salesHistory, setSalesHistory] = useState<any[]>([]);
@@ -116,6 +120,18 @@ const CalculatorScreen = ({
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [showSuccessToast, setShowSuccessToast] = useState(false);
   const [showReceiptToast, setShowReceiptToast] = useState(false);
+
+  // Estados para Edição de Estoque/Quantidade na aba de Quantidade
+  const [stockEditProductId, setStockEditProductId] = useState<string | null>(null);
+  const [stockEditName, setStockEditName] = useState<string>('');
+  const [stockEditQuantity, setStockEditQuantity] = useState<number>(0);
+  const [stockEditUnit, setStockEditUnit] = useState<'kg' | 'gram' | 'box' | 'bag' | 'unit'>('unit');
+  const [stockEditCategory, setStockEditCategory] = useState<string>('');
+  const [stockEditSalesMerchandiseQty, setStockEditSalesMerchandiseQty] = useState<number>(0);
+  const [stockFormSegmentoSearch, setStockFormSegmentoSearch] = useState<string>('');
+  const [showStockFormSegmentoDropdown, setShowStockFormSegmentoDropdown] = useState<boolean>(false);
+  const [quantityFilterCategory, setQuantityFilterCategory] = useState<string>('');
+  const [quantitySearch, setQuantitySearch] = useState<string>('');
 
   // Estados para Gestão de Produtos em Estoque
   const [products, setProducts] = useState<Array<{
@@ -127,6 +143,7 @@ const CalculatorScreen = ({
     costPrice: number;
     createdAt?: string;
     segmento?: string;
+    salesMerchandiseQty?: number;
   }>>([]);
   const [productFormId, setProductFormId] = useState<string | null>(null);
   const [productFormName, setProductFormName] = useState<string>('');
@@ -134,6 +151,7 @@ const CalculatorScreen = ({
   const [productFormUnit, setProductFormUnit] = useState<'kg' | 'gram' | 'box' | 'bag' | 'unit'>('unit');
   const [productFormWeightPerUnit, setProductFormWeightPerUnit] = useState<number>(0);
   const [productFormCostPrice, setProductFormCostPrice] = useState<number>(0);
+  const [productFormSalesMerchandiseQty, setProductFormSalesMerchandiseQty] = useState<number>(0);
 
   // Carregar histórico e nomes de produtos recentes e estoque do localStorage na inicialização
   useEffect(() => {
@@ -413,6 +431,8 @@ const CalculatorScreen = ({
         weightPerUnit: isNaN(Number(productFormWeightPerUnit)) ? 0 : Number(productFormWeightPerUnit),
         costPrice: Number(productFormCostPrice) || 0,
         segmento: productFormSegmento || undefined,
+        tamanho: productFormTamanho || undefined,
+        salesMerchandiseQty: Number(productFormSalesMerchandiseQty) || 0,
       } : p);
       saveProducts(updated);
       setProductFormId(null);
@@ -426,6 +446,8 @@ const CalculatorScreen = ({
         weightPerUnit: isNaN(Number(productFormWeightPerUnit)) ? 0 : Number(productFormWeightPerUnit),
         costPrice: Number(productFormCostPrice) || 0,
         segmento: productFormSegmento || undefined,
+        tamanho: productFormTamanho || undefined,
+        salesMerchandiseQty: Number(productFormSalesMerchandiseQty) || 0,
         createdAt: new Date().toLocaleString('pt-BR', {
           dateStyle: 'short',
           timeStyle: 'short'
@@ -442,6 +464,8 @@ const CalculatorScreen = ({
     setProductFormCostPrice(0);
     setProductFormSegmento('');
     setProductFormSegmentoSearch('');
+    setProductFormSalesMerchandiseQty(0);
+    setProductFormTamanho('');
   };
 
   const confirmDeleteProduct = (id: string) => {
@@ -459,6 +483,8 @@ const CalculatorScreen = ({
     setProductFormCostPrice(p.costPrice);
     setProductFormSegmento(p.segmento || '');
     setProductFormSegmentoSearch(p.segmento || '');
+    setProductFormSalesMerchandiseQty(p.salesMerchandiseQty || 0);
+    setProductFormTamanho(p.tamanho || '');
   };
 
   const cancelEditProduct = () => {
@@ -470,6 +496,8 @@ const CalculatorScreen = ({
     setProductFormCostPrice(0);
     setProductFormSegmento('');
     setProductFormSegmentoSearch('');
+    setProductFormSalesMerchandiseQty(0);
+    setProductFormTamanho('');
   };
 
   useEffect(() => {
@@ -515,6 +543,55 @@ const CalculatorScreen = ({
   const addItem = () => {
     if (currentItemTotal <= 0) return;
 
+    // Verificar se o produto é cadastrado e validar se há estoque
+    const registeredProduct = products.find(
+      (p) => p.name.trim().toLowerCase() === (productName || '').trim().toLowerCase()
+    );
+
+    if (registeredProduct) {
+      const totalSoldInHistory = salesHistory.reduce((acc, sale) => {
+        if (!sale || !sale.items) return acc;
+        const matched = sale.items.filter((it: any) => it.name.trim().toLowerCase() === registeredProduct.name.trim().toLowerCase());
+        const sum = matched.reduce((s: number, it: any) => s + (it.quantity || 0), 0);
+        return acc + sum;
+      }, 0);
+
+      const totalInCurrentCart = items.reduce((acc, item) => {
+        if (editingItemId && item.id === editingItemId) return acc;
+        if (item.name.trim().toLowerCase() === registeredProduct.name.trim().toLowerCase()) {
+          return acc + (item.quantity || 0);
+        }
+        return acc;
+      }, 0);
+
+      const totalConsumed = totalSoldInHistory + totalInCurrentCart;
+      
+      const q0 = registeredProduct.quantity || 0;
+      const m = registeredProduct.salesMerchandiseQty || 0;
+      
+      let remainingSalesMerchandise = 0;
+      if (m <= 0) {
+        remainingSalesMerchandise = Math.max(0, q0 - totalConsumed);
+      } else {
+        const totalCapacity = q0 * m;
+        remainingSalesMerchandise = Math.max(0, totalCapacity - totalConsumed);
+      }
+
+      if (remainingSalesMerchandise <= 0) {
+        alert(
+          `VENDA NÃO AUTORIZADA!\n\nO produto "${registeredProduct.name}" está sem estoque de "Mercadoria de Venda" (Estoque atual: 0).\nPor favor, adicione estoque nas Opções Disponíveis na tela "QUANTIDADE" antes de prosseguir.`
+        );
+        return;
+      }
+
+      if (remainingSalesMerchandise < quantity) {
+        alert(
+          `QUANTIDADE NÃO AUTORIZADA!\n\nVocê está tentando vender ${quantity} ${quantity > 1 ? 'quantidades/unidades' : 'quantidade/unidade'} do produto "${registeredProduct.name}", mas restam apenas ${remainingSalesMerchandise} no estoque de Mercadoria de Venda.\n\nPor favor, adicione mais estoque ou reduza a quantidade.`
+        );
+        return;
+      }
+    }
+
     let comercializacao = '';
     if (comercialUnit) {
       comercializacao = formatarComercializacao(comercialUnit, comercialText);
@@ -536,6 +613,7 @@ const CalculatorScreen = ({
             comercialUnit: comercialUnit || undefined,
             comercialText: comercialText || undefined,
             segmento: segmento || undefined,
+            tamanho: tamanho || undefined,
           };
         }
         return item;
@@ -555,6 +633,7 @@ const CalculatorScreen = ({
         comercialUnit: comercialUnit || undefined,
         comercialText: comercialText || undefined,
         segmento: segmento || undefined,
+        tamanho: tamanho || undefined,
       };
       setItems([...items, newItem]);
     }
@@ -566,6 +645,7 @@ const CalculatorScreen = ({
     setComercialText('');
     setSegmento('');
     setSegmentoSearch('');
+    setTamanho('');
   };
 
   const startEditItem = (item: any) => {
@@ -579,6 +659,7 @@ const CalculatorScreen = ({
     setComercialText(item.comercialText || '');
     setSegmento(item.segmento || '');
     setSegmentoSearch(item.segmento || '');
+    setTamanho(item.tamanho || '');
     
     // Rolar até o formulário de cálculo
     const target = document.getElementById('product-name-input');
@@ -596,6 +677,67 @@ const CalculatorScreen = ({
     setComercialText('');
     setSegmento('');
     setSegmentoSearch('');
+    setTamanho('');
+  };
+
+  const formatUnitLabel = (val: number, unitId: string) => {
+    const isPlural = val > 1; // 0 and 1 are singular, 2, 3, 4, 5... are plural
+    const u = (unitId || 'unit').toLowerCase();
+    if (u === 'unit' || u === 'unidade' || u === 'unidades') {
+      return isPlural ? 'unidades' : 'unidade';
+    }
+    if (u === 'kg' || u === 'quilo' || u === 'quilos') {
+      return isPlural ? 'quilos' : 'quilo';
+    }
+    if (u === 'gram' || u === 'grama' || u === 'gramas') {
+      return isPlural ? 'gramas' : 'grama';
+    }
+    if (u === 'box' || u === 'caixa' || u === 'caixas') {
+      return isPlural ? 'caixas' : 'caixa';
+    }
+    if (u === 'bag' || u === 'saco' || u === 'sacos') {
+      return isPlural ? 'sacos' : 'saco';
+    }
+    return isPlural ? 'unidades' : 'unidade';
+  };
+
+  const handleSaveStockEdit = () => {
+    if (!stockEditProductId) return;
+    const updatedProducts = products.map((p) => {
+      if (p.id === stockEditProductId) {
+        return {
+          ...p,
+          quantity: stockEditQuantity,
+          unit: stockEditUnit,
+          segmento: stockEditCategory || undefined,
+          salesMerchandiseQty: stockEditSalesMerchandiseQty,
+        };
+      }
+      return p;
+    });
+    setProducts(updatedProducts);
+    localStorage.setItem('feiralivre_products', JSON.stringify(updatedProducts));
+    
+    setStockEditProductId(null);
+    setStockEditName('');
+    setStockEditQuantity(0);
+    setStockEditUnit('unit');
+    setStockEditCategory('');
+    setStockEditSalesMerchandiseQty(0);
+    setStockFormSegmentoSearch('');
+    
+    setShowSuccessToast(true);
+    setTimeout(() => setShowSuccessToast(false), 3000);
+  };
+
+  const cancelStockEdit = () => {
+    setStockEditProductId(null);
+    setStockEditName('');
+    setStockEditQuantity(0);
+    setStockEditUnit('unit');
+    setStockEditCategory('');
+    setStockEditSalesMerchandiseQty(0);
+    setStockFormSegmentoSearch('');
   };
 
   const removeItem = (id: string) => {
@@ -697,8 +839,11 @@ const CalculatorScreen = ({
       if (item.comercializacao) {
         text += `   • Comercialização: ${item.comercializacao}\n`;
       }
+      if (item.tamanho) {
+        text += `   • Tamanho: ${item.tamanho}\n`;
+      }
       if (item.segmento) {
-        text += `   • Segmento: ${item.segmento}\n`;
+        text += `   • Categoria: ${item.segmento}\n`;
       }
       text += `   • Preço Unitário: ${precoUnitText}\n`;
       text += `   • Preço do produto: R$ ${(item.total || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}\n\n`;
@@ -759,8 +904,11 @@ const CalculatorScreen = ({
         if (item.comercializacao) {
           text += `      • Comercialização: ${item.comercializacao}\n`;
         }
+        if (item.tamanho) {
+          text += `      • Tamanho: ${item.tamanho}\n`;
+        }
         if (item.segmento) {
-          text += `      • Segmento: ${item.segmento}\n`;
+          text += `      • Categoria: ${item.segmento}\n`;
         }
         const precoUnitRatio = item.unit === 'gram' ? 1000 : 1;
         const precoUnitText = `${formatarMercadoria(precoUnitRatio, item.unit || 'unit')} — R$ ${(item.price || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
@@ -788,6 +936,7 @@ const CalculatorScreen = ({
     saleItems.forEach((item: any) => {
       let itemCardHeight = 24;
       if (item.comercializacao) itemCardHeight += 4;
+      if (item.tamanho) itemCardHeight += 4;
       if (item.segmento) itemCardHeight += 4;
       height += itemCardHeight + 3; // card height + padding
     });
@@ -886,6 +1035,7 @@ const CalculatorScreen = ({
 
       let itemCardHeight = 24;
       if (item.comercializacao) itemCardHeight += 4;
+      if (item.tamanho) itemCardHeight += 4;
       if (item.segmento) itemCardHeight += 4;
 
       // Card container outline for product
@@ -925,8 +1075,11 @@ const CalculatorScreen = ({
       if (item.comercializacao) {
         drawItemField("Comercialização / Peso ou Medida:", item.comercializacao, true);
       }
+      if (item.tamanho) {
+        drawItemField("Tamanho:", item.tamanho, false, false);
+      }
       if (item.segmento) {
-        drawItemField("Segmento / Categoria de Venda:", item.segmento, false, true);
+        drawItemField("Categoria:", item.segmento, false, true);
       }
 
       cardY += itemCardHeight + 3;
@@ -1153,7 +1306,7 @@ const CalculatorScreen = ({
             )}
             <div>
               <h2 className="text-2xl font-bold tracking-tight text-slate-900">
-                {activeTab === 'calculator' ? 'Painel de Lançamento' : activeTab === 'products' ? 'Produto' : 'Minha Venda'}
+                {activeTab === 'calculator' ? 'Painel de Lançamento' : activeTab === 'products' ? 'Produto' : activeTab === 'quantity' ? 'QUANTIDADE' : 'Minha Venda'}
               </h2>
               <p className={cn(
                 "text-[10px] font-bold text-emerald-600 tracking-widest",
@@ -1163,13 +1316,15 @@ const CalculatorScreen = ({
                   ? 'COMERCIALIZAÇÃO DE VENDAS & ESTOQUE' 
                   : activeTab === 'products'
                     ? 'REGISTRO DE PRODUTO, CONTROLE DE QUANTIDADE DE ESTOQUE.'
-                    : 'Registro de venda, histórico de venda salva.'}
+                    : activeTab === 'quantity'
+                      ? 'Os estoques das quantidades e das Mercadorias.'
+                      : 'Registro de venda, histórico de venda salva.'}
               </p>
             </div>
           </div>
 
           {/* Abas Modernas */}
-          <div className="flex flex-col bg-slate-200/60 p-1.5 rounded-2xl items-center border border-slate-200 gap-1 w-full max-w-[160px] mx-auto md:mx-0 shrink-0">
+          <div className="flex flex-col bg-slate-200/60 p-1.5 rounded-2xl items-center border border-slate-200 gap-1 w-full max-w-[170px] mx-auto md:mx-0 shrink-0">
             <button
               onClick={() => setActiveTab('calculator')}
               className={cn(
@@ -1191,6 +1346,17 @@ const CalculatorScreen = ({
               )}
             >
               <Package size={11} /> Produto
+            </button>
+            <button
+              onClick={() => setActiveTab('quantity')}
+              className={cn(
+                "px-3 py-1.5 rounded-xl font-bold text-[10px] uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 w-full",
+                activeTab === 'quantity' 
+                  ? "bg-white text-emerald-700 shadow-sm font-extrabold" 
+                  : "text-slate-500 hover:text-slate-700 hover:bg-slate-300/40"
+              )}
+            >
+              <Scale size={11} /> Quantidade
             </button>
             <button
               onClick={() => setActiveTab('history')}
@@ -1246,7 +1412,7 @@ const CalculatorScreen = ({
 
               <div className="space-y-6">
                 {/* Nome do Produto */}
-                <div className="flex flex-col gap-2">
+                <div className="flex flex-col gap-2 relative">
                   <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 ml-1">Produto Selecionado</label>
                   <div className="relative group">
                     <input
@@ -1254,51 +1420,153 @@ const CalculatorScreen = ({
                       type="text"
                       placeholder="Ex: Tomate Cereja, Batata Doce..."
                       value={productName}
-                      onChange={(e) => setProductName(e.target.value)}
+                      onFocus={() => setShowCalcProductDropdown(true)}
+                      onChange={(e) => {
+                        setProductName(e.target.value);
+                        setShowCalcProductDropdown(true);
+                      }}
                       className="w-full p-5 bg-slate-50 border-2 border-transparent rounded-[20px] focus:border-emerald-500 focus:bg-white outline-none transition-all font-bold text-slate-800 placeholder:text-slate-300 shadow-inner"
                     />
-                    <div className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-300">
-                      <ChevronRight size={20} />
-                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowCalcProductDropdown(!showCalcProductDropdown)}
+                      className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition flex items-center justify-center p-1 cursor-pointer"
+                    >
+                      <ChevronDown size={20} className={cn("transition-transform duration-200", showCalcProductDropdown ? "rotate-180" : "")} />
+                    </button>
                   </div>
 
-                  {/* Mais Vendidos / Sugestões Rápidas */}
-                  <div className="mt-1 flex flex-col gap-1.5">
-                    <span className="text-[9px] font-black uppercase tracking-widest text-slate-400/80 ml-1 flex items-center gap-1">
-                      <Search size={10} /> Lista de Já Vendidos / Mais Vendidos (Estoque)
-                    </span>
-                    <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto py-1 pr-1">
-                      {(() => {
-                        const availableProducts = products;
-                        return availableProducts.length > 0 ? (
-                          (productName 
-                            ? availableProducts.filter(p => p.name.toLowerCase().includes(productName.toLowerCase()))
-                            : availableProducts
-                          ).slice(0, 15).map((p) => {
-                          return (
-                            <button
-                              key={p.id}
-                              type="button"
-                              onClick={() => {
-                                setProductName(p.name);
-                                if (p.unit) setUnit(p.unit as any);
-                                if (p.weightPerUnit !== undefined) setWeightPerUnit(p.weightPerUnit);
-                                if (p.costPrice) setPrice(p.costPrice);
-                                document.getElementById('price-input')?.focus();
-                              }}
-                              className="text-[10px] font-bold px-3 py-1.5 border border-slate-200 hover:border-emerald-500 hover:text-emerald-700 text-slate-600 bg-white hover:bg-emerald-50/30 rounded-full transition-all flex items-center gap-1.5 shadow-sm shrink-0 cursor-pointer"
-                            >
-                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                              <span>{p.name}</span>
-                            </button>
-                          );
-                        })
-                      ) : (
-                        <span className="text-[10px] text-slate-400 italic font-medium ml-1">Nenhum produto cadastrado</span>
-                      );
-                    })()}
-                    </div>
-                  </div>
+                  {showCalcProductDropdown && (
+                    <>
+                      {/* Invisible backdrop to capture outside clicks */}
+                      <div 
+                        className="fixed inset-0 z-40" 
+                        onClick={() => setShowCalcProductDropdown(false)} 
+                      />
+                      <div className="absolute z-50 left-0 right-0 top-full mt-2 max-h-72 overflow-y-auto bg-white border border-slate-200 rounded-[20px] shadow-2xl divide-y divide-slate-100 p-2 animate-in fade-in slide-in-from-top-2 duration-150">
+                        <div className="p-2 border-b border-slate-50 font-black text-[9px] text-slate-400 flex items-center justify-between sticky top-0 bg-white z-10">
+                          <span>PRODUTOS CADASTRADOS & ESTOQUE</span>
+                          <button 
+                            type="button" 
+                            onClick={() => setShowCalcProductDropdown(false)}
+                            className="text-[10px] text-rose-500 hover:text-rose-700 bg-rose-50 px-2.5 py-1 rounded-md transition font-bold"
+                          >
+                            Fechar
+                          </button>
+                        </div>
+                        <div className="divide-y divide-slate-50">
+                          {(() => {
+                            const filtered = products.filter(p => 
+                              p.name.toLowerCase().includes(productName.toLowerCase())
+                            );
+
+                            if (filtered.length === 0) {
+                              return (
+                                <div className="p-4 text-center">
+                                  <span className="text-[11px] text-slate-400 font-semibold italic block">
+                                    Adicionar "{productName || 'Novo Produto'}" como produto avulso.
+                                  </span>
+                                </div>
+                              );
+                            }
+
+                            return filtered.map((p) => {
+                              const totalSoldInHistory = salesHistory.reduce((acc, sale) => {
+                                if (!sale || !sale.items) return acc;
+                                const matched = sale.items.filter((it: any) => it.name.trim().toLowerCase() === p.name.trim().toLowerCase());
+                                const sum = matched.reduce((s: number, it: any) => s + (it.quantity || 0), 0);
+                                return acc + sum;
+                              }, 0);
+
+                              const totalInCurrentCart = items.reduce((acc, item) => {
+                                if (editingItemId && item.id === editingItemId) return acc;
+                                if (item.name.trim().toLowerCase() === p.name.trim().toLowerCase()) {
+                                    return acc + (item.quantity || 0);
+                                }
+                                return acc;
+                              }, 0);
+
+                              const totalSold = totalSoldInHistory + totalInCurrentCart;
+                              const q0 = p.quantity || 0;
+                              const m = p.salesMerchandiseQty || 0;
+
+                              let remainingQty = 0;
+                              let remainingStockItem = 0;
+
+                              if (m <= 0) {
+                                remainingQty = Math.max(0, q0 - totalSold);
+                                remainingStockItem = remainingQty;
+                              } else {
+                                const totalCapacity = q0 * m;
+                                if (totalSold >= totalCapacity) {
+                                  remainingQty = 0;
+                                  remainingStockItem = 0;
+                                } else {
+                                  const q = Math.floor(totalSold / m);
+                                  const r = totalSold % m;
+                                  if (r === 0) {
+                                    remainingQty = q0 - q;
+                                    remainingStockItem = m;
+                                  } else {
+                                    remainingQty = q0 - q;
+                                    remainingStockItem = m - r;
+                                  }
+                                }
+                              }
+
+                              const hasStock = remainingQty > 0 || remainingStockItem > 0;
+
+                              return (
+                                <button
+                                  key={p.id}
+                                  type="button"
+                                  onClick={() => {
+                                    setProductName(p.name);
+                                    if (p.unit) setUnit(p.unit as any);
+                                    if (p.weightPerUnit !== undefined) setWeightPerUnit(p.weightPerUnit);
+                                    if (p.costPrice) setPrice(p.costPrice);
+                                    setShowCalcProductDropdown(false);
+                                    setTimeout(() => {
+                                      document.getElementById('price-input')?.focus();
+                                    }, 50);
+                                  }}
+                                  className="w-full text-left font-semibold text-xs text-slate-700 p-3 hover:bg-emerald-50 hover:text-emerald-800 transition-colors flex items-center justify-between border-0 bg-transparent rounded-xl cursor-pointer"
+                                >
+                                  <div className="flex flex-col gap-0.5">
+                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                      <span className={cn(
+                                        "w-2 h-2 rounded-full",
+                                        hasStock ? "bg-emerald-500" : "bg-rose-500 animate-pulse"
+                                      )}></span>
+                                      <span className="font-extrabold text-slate-800 text-xs sm:text-[13px]">{p.name}</span>
+                                      {p.tamanho && (
+                                        <span className="text-[9px] font-black uppercase text-blue-700 bg-blue-50 border border-blue-100 px-1.5 py-0.5 rounded-md">
+                                          {p.tamanho}
+                                        </span>
+                                      )}
+                                    </div>
+                                    <span className="text-[10px] text-slate-400 font-medium">
+                                      Unidade: {p.unit} • Preço: R$ {p.costPrice.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} {m > 0 && `• ${remainingQty} pct restante(s)`}
+                                    </span>
+                                  </div>
+                                  <div className="text-right shrink-0">
+                                    <span className={cn(
+                                      "text-[10px] font-black uppercase py-1 px-2 rounded-lg border",
+                                      hasStock 
+                                        ? "bg-emerald-50 text-emerald-700 border-emerald-100" 
+                                        : "bg-rose-50 text-rose-700 border-rose-100"
+                                    )}>
+                                      Estoque: {remainingStockItem} {m > 0 ? formatUnitLabel(remainingStockItem, p.unit) : ''}
+                                    </span>
+                                  </div>
+                                </button>
+                              );
+                            });
+                          })()}
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </div>
 
                 {/* Preço Base */}
@@ -1392,11 +1660,11 @@ const CalculatorScreen = ({
                       </div>
                     </div>
 
-                    {/* Dinâmica de Comercialização / Atividade Comercial Opcional */}
+                    {/* Dinâmica de Comercialização Opcional */}
                     <div className="space-y-3 pt-4 border-t border-slate-200/60 pb-2 relative">
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <div className="flex items-center gap-2">
-                          <span className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">Colunas Opcionais — Comercialização & Atividade</span>
+                          <span className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">Comercialização Opcional</span>
                           <span className="text-[8px] bg-emerald-50 text-emerald-700 py-0.5 px-2 rounded-full font-bold uppercase">Personalize</span>
                         </div>
                         {segmento && (
@@ -1405,7 +1673,7 @@ const CalculatorScreen = ({
                             onClick={() => { setSegmento(''); setSegmentoSearch(''); }}
                             className="text-[9px] font-bold text-rose-500 hover:text-rose-700 transition"
                           >
-                            Limpar Segmento
+                            Limpar Categoria
                           </button>
                         )}
                       </div>
@@ -1442,11 +1710,11 @@ const CalculatorScreen = ({
                         </div>
 
                         <div className="space-y-1 relative">
-                          <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Atividade / Segmento</label>
+                          <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Menu Comercialização Categoria</label>
                           <div className="relative">
                             <input
                               type="text"
-                              placeholder="Pesquisar segmento..."
+                              placeholder="Pesquisar Categoria"
                               value={showSegmentoDropdown ? segmentoSearch : (segmento || "")}
                               onFocus={() => {
                                 setShowSegmentoDropdown(true);
@@ -1465,7 +1733,7 @@ const CalculatorScreen = ({
                           {showSegmentoDropdown && (
                             <div className="absolute z-50 left-0 right-0 mt-1 max-h-56 overflow-y-auto bg-white border border-slate-200 rounded-xl shadow-xl overflow-x-hidden divide-y divide-slate-100">
                               <div className="p-2 border-b border-slate-100 font-bold text-[9px] text-slate-400 bg-slate-50">
-                                SELECIONE O SEGMENTO:
+                                SELECIONE A CATEGORIA:
                               </div>
                               <div className="divide-y divide-slate-50">
                                 {SEGM_OPTIONS.filter((opt) => 
@@ -1491,12 +1759,30 @@ const CalculatorScreen = ({
                                   opt.toLowerCase().includes(segmentoSearch.toLowerCase())
                                 ).length === 0 && (
                                   <div className="p-4 text-center text-xs text-slate-400 italic">
-                                    Nenhum segmento encontrado...
+                                    Nenhuma categoria encontrada...
                                   </div>
                                 )}
                               </div>
                             </div>
                           )}
+                        </div>
+                      </div>
+
+                      {/* Nova coluna menu Tamanho abaixo das outras */}
+                      <div className="mt-3.5 pt-3.5 border-t border-slate-100/50">
+                        <div className="space-y-1 max-w-sm">
+                          <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1 block">Tamanho</label>
+                          <select
+                            id="demo-tamanho-select"
+                            value={tamanho}
+                            onChange={(e) => setTamanho(e.target.value)}
+                            className="w-full p-4 bg-white border-2 border-slate-100 rounded-[16px] outline-none font-bold text-sm text-slate-700 shadow-sm focus:border-emerald-500 transition-colors"
+                          >
+                            <option value="">Nenhum tamanho selecionado</option>
+                            <option value="GRANDE (G)">GRANDE (G)</option>
+                            <option value="MÉDIO (M)">MÉDIO (M)</option>
+                            <option value="PEQUENO (P)">PEQUENO (P)</option>
+                          </select>
                         </div>
                       </div>
 
@@ -1602,7 +1888,10 @@ const CalculatorScreen = ({
                                     <span className="text-emerald-600 font-extrabold normal-case">Comercialização: {item.comercializacao}</span>
                                   )}
                                   {item.segmento && (
-                                    <span className="text-amber-700 font-extrabold normal-case">Segmento: {item.segmento}</span>
+                                    <span className="text-amber-700 font-extrabold normal-case">Categoria: {item.segmento}</span>
+                                  )}
+                                  {item.tamanho && (
+                                    <span className="text-blue-600 font-extrabold normal-case">Tamanho: {item.tamanho}</span>
                                   )}
                                   <span className="text-slate-400">Preço Unitário: {formatarMercadoria(item.unit === 'gram' ? 1000 : 1, item.unit)} — R$ {item.price.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
                                 </div>
@@ -1808,7 +2097,10 @@ const CalculatorScreen = ({
                               <span className="text-[9px] text-emerald-100 font-semibold ml-1 block">Comercialização: {item.comercializacao}</span>
                             )}
                             {item.segmento && (
-                              <span className="text-[9px] text-amber-200 font-semibold ml-1 block">Segmento: {item.segmento}</span>
+                              <span className="text-[9px] text-amber-200 font-semibold ml-1 block">Categoria: {item.segmento}</span>
+                            )}
+                            {item.tamanho && (
+                              <span className="text-[9px] text-blue-200 font-semibold ml-1 block">Tamanho: {item.tamanho}</span>
                             )}
                             <div className="flex flex-col ml-1 mt-1">
                               <span className="text-[8px] text-emerald-200/85 uppercase font-black tracking-wider">PREÇO DO PRODUTO</span>
@@ -1952,6 +2244,18 @@ const CalculatorScreen = ({
                   />
                 </div>
 
+                {/* Quantidade de Mercadorias de Vendas */}
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 ml-1">QUANTIDADE DE MERCADORIAS DE VENDAS</label>
+                  <input
+                    type="number"
+                    placeholder="0"
+                    value={productFormSalesMerchandiseQty === 0 ? '' : productFormSalesMerchandiseQty}
+                    onChange={(e) => setProductFormSalesMerchandiseQty(Number(e.target.value))}
+                    className="w-full py-3 px-4 bg-slate-50 border border-slate-200 rounded-xl font-sans font-semibold text-slate-800 focus:outline-none focus:border-emerald-500 focus:bg-white text-xs transition-colors"
+                  />
+                </div>
+
                 {/* Preço de Custo */}
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 ml-1">PREÇO UNITÁRIO (DESEMBOLSO) (R$)</label>
@@ -1968,10 +2272,10 @@ const CalculatorScreen = ({
                   </div>
                 </div>
 
-                {/* Atividade Comercial / Segmento para Cadastro de Produto */}
+                {/* Atividade Comercial / Categoria para Cadastro de Produto */}
                 <div className="space-y-1.5 relative">
                   <div className="flex items-center justify-between">
-                    <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 ml-1">ATIVIDADE COMERCIAL / SEGMENTO (OPCIONAL)</label>
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 ml-1">Menu Comercialização Categoria Opcional</label>
                     {productFormSegmento && (
                       <button 
                         type="button" 
@@ -1985,7 +2289,7 @@ const CalculatorScreen = ({
                   <div className="relative">
                     <input
                       type="text"
-                      placeholder="Pesquisar segmento..."
+                      placeholder="Pesquisar Categoria"
                       value={showProductFormSegmentoDropdown ? productFormSegmentoSearch : (productFormSegmento || "")}
                       onFocus={() => {
                         setShowProductFormSegmentoDropdown(true);
@@ -2004,7 +2308,7 @@ const CalculatorScreen = ({
                   {showProductFormSegmentoDropdown && (
                     <div className="absolute z-50 left-0 right-0 mt-1 max-h-48 overflow-y-auto bg-white border border-slate-250 border-slate-200 rounded-xl shadow-xl divide-y divide-slate-100">
                       <div className="p-1.5 px-3 border-b border-slate-100 font-bold text-[8px] text-slate-400 bg-slate-50">
-                        OPÇÕES DE SEGMENTO:
+                        OPÇÕES DE CATEGORIA:
                       </div>
                       <div className="divide-y divide-slate-50">
                         {SEGM_OPTIONS.filter((opt) => 
@@ -2030,7 +2334,7 @@ const CalculatorScreen = ({
                           opt.toLowerCase().includes(productFormSegmentoSearch.toLowerCase())
                         ).length === 0 && (
                           <div className="p-3 text-center text-xs text-slate-400 italic">
-                            Nenhum segmento encontrado...
+                            Nenhuma categoria encontrada...
                           </div>
                         )}
                       </div>
@@ -2045,15 +2349,49 @@ const CalculatorScreen = ({
                   )}
                 </div>
 
+                {/* Tamanho Opcional para Cadastro de Produto */}
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 ml-1">Tamanho Opcional</label>
+                    {productFormTamanho && (
+                      <button 
+                        type="button" 
+                        onClick={() => setProductFormTamanho('')}
+                        className="text-[9px] font-bold text-rose-500 hover:text-rose-700 transition"
+                      >
+                        Limpar
+                      </button>
+                    )}
+                  </div>
+                  <select
+                    value={productFormTamanho}
+                    onChange={(e) => setProductFormTamanho(e.target.value)}
+                    className="w-full py-3 px-4 bg-slate-50 border border-slate-200 rounded-xl font-sans font-semibold text-slate-800 focus:outline-none focus:border-emerald-500 focus:bg-white text-xs transition-colors cursor-pointer"
+                  >
+                    <option value="">Nenhum tamanho selecionado</option>
+                    <option value="GRANDE (G)">GRANDE (G)</option>
+                    <option value="MÉDIO (M)">MÉDIO (M)</option>
+                    <option value="PEQUENO (P)">PEQUENO (P)</option>
+                  </select>
+                </div>
+
               </div>
 
               {/* Pré-visualização com cálculo de desembolso no formulário */}
               <div className="bg-slate-50 border border-slate-200/60 rounded-2xl p-4.5 space-y-2 text-[11px] font-sans text-slate-600 shadow-inner">
                 {productFormSegmento && (
                   <div className="flex items-center justify-between">
-                    <span className="font-semibold text-slate-500">Segmento:</span>
+                    <span className="font-semibold text-slate-500">Categoria:</span>
                     <span className="font-bold text-amber-700">
                       {productFormSegmento}
+                    </span>
+                  </div>
+                )}
+                {productFormTamanho && (
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold text-slate-500">Tamanho:</span>
+                    <span className="font-bold text-blue-600">
+                      {productFormTamanho}
                     </span>
                   </div>
                 )}
@@ -2121,7 +2459,7 @@ const CalculatorScreen = ({
                         <h3 className="text-sm font-black text-slate-850 uppercase tracking-wider">Produtos Cadastrados ({filteredProducts.length})</h3>
                       </div>
 
-                      {/* Filtro de Atividade Comercial */}
+                      {/* Filtro de Categoria */}
                       <div className="flex items-center gap-1.5 shrink-0">
                         <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider shrink-0">Filtrar:</span>
                         <select
@@ -2130,7 +2468,7 @@ const CalculatorScreen = ({
                           className="py-1.5 px-3 bg-slate-50 border border-slate-200 rounded-xl text-[10px] font-bold text-slate-700 outline-none focus:border-emerald-500 transition-colors w-32 sm:w-40 max-w-[160px] truncate cursor-pointer"
                           style={{ maxWidth: '160px' }}
                         >
-                          <option value="">Todos os Segmentos</option>
+                          <option value="">Todas as Categorias</option>
                           {SEGM_OPTIONS.map((opt) => (
                             <option key={opt} value={opt} className="font-sans font-semibold text-xs">
                               {opt}
@@ -2180,7 +2518,12 @@ const CalculatorScreen = ({
                                   </span>
                                   {p.segmento && (
                                     <span className="sm:col-span-2">
-                                      Segmento: <span className="text-[9px] font-black tracking-wide text-amber-800 bg-amber-50 px-2.5 py-0.5 rounded-md border border-amber-100 normal-case">{p.segmento}</span>
+                                      Categoria: <span className="text-[9px] font-black tracking-wide text-amber-800 bg-amber-50 px-2.5 py-0.5 rounded-md border border-amber-100 normal-case">{p.segmento}</span>
+                                    </span>
+                                  )}
+                                  {p.tamanho && (
+                                    <span className="sm:col-span-2">
+                                      Tamanho: <span className="text-[9px] font-black tracking-wide text-blue-800 bg-blue-50 px-2.5 py-0.5 rounded-md border border-blue-100 normal-case">{p.tamanho}</span>
                                     </span>
                                   )}
                                   <span>
@@ -2254,6 +2597,416 @@ const CalculatorScreen = ({
               </motion.div>
             )}
           </AnimatePresence>
+        </div>
+      ) : activeTab === 'quantity' ? (
+        <div id="quantity-tab-panel" className="space-y-8 pb-12 animate-fade-in max-w-6xl mx-auto px-2">
+          {/* Main Grid */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+            {/* Left side: Edit Stock Form */}
+            <div className="lg:col-span-5 bg-white rounded-[32px] p-6 md:p-8 border border-slate-100 shadow-[0_4px_12px_rgba(0,0,0,0.08)] space-y-6 self-start">
+              <div className="flex flex-col gap-1.5 pb-4 border-b border-slate-100">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 bg-amber-50 rounded-lg flex items-center justify-center text-amber-600">
+                    <Pencil size={16} />
+                  </div>
+                  <h3 className="text-xs font-black text-slate-850 uppercase tracking-wider">
+                    {stockEditProductId ? "Editar Estoque" : "Adicione seu Estoque"}
+                  </h3>
+                </div>
+                {stockEditProductId && (
+                  <p className="text-[11px] text-slate-500 font-medium leading-relaxed">
+                    O estoque da quantidade e mercadoria de venda do produto selecionado.
+                  </p>
+                )}
+              </div>
+
+              {stockEditProductId ? (
+                <div className="space-y-5">
+                  {/* Nome do Produto (Desabilitado) */}
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 ml-1">PRODUTO SELECIONADO</label>
+                    <input
+                      type="text"
+                      disabled
+                      value={stockEditName}
+                      className="w-full py-3 px-4 bg-slate-100 border border-slate-200 rounded-xl font-sans font-bold text-slate-500 text-xs cursor-not-allowed"
+                    />
+                  </div>
+
+                  {/* Menu de Comercialização Categoria (Opcional) */}
+                  <div className="space-y-1.5 relative">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 ml-1">CATEGORIA DO PRODUTO (MENU)</label>
+                      {stockEditCategory && (
+                        <button 
+                          type="button" 
+                          onClick={() => { setStockEditCategory(''); setStockFormSegmentoSearch(''); }}
+                          className="text-[9px] font-bold text-rose-500 hover:text-rose-700 transition"
+                        >
+                          Limpar
+                        </button>
+                      )}
+                    </div>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        placeholder="Pesquisar categoria..."
+                        value={showStockFormSegmentoDropdown ? stockFormSegmentoSearch : (stockEditCategory || "")}
+                        onFocus={() => {
+                          setShowStockFormSegmentoDropdown(true);
+                          setStockFormSegmentoSearch(stockEditCategory);
+                        }}
+                        onChange={(e) => {
+                          setStockFormSegmentoSearch(e.target.value);
+                        }}
+                        className="w-full py-3 px-4 bg-slate-50 border border-slate-200 rounded-xl font-sans font-semibold text-slate-800 focus:outline-none focus:border-emerald-500 focus:bg-white text-xs transition-colors"
+                      />
+                      <div className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400">
+                        <Search size={14} />
+                      </div>
+                    </div>
+
+                    {showStockFormSegmentoDropdown && (
+                      <div className="absolute z-50 left-0 right-0 mt-1 max-h-48 overflow-y-auto bg-white border border-slate-200 rounded-xl shadow-xl divide-y divide-slate-100">
+                        <div className="p-1.5 px-3 border-b border-slate-100 font-bold text-[8px] text-slate-400 bg-slate-50">
+                          OPÇÕES DE CATEGORIA:
+                        </div>
+                        <div className="divide-y divide-slate-50">
+                          {SEGM_OPTIONS.filter((opt) => 
+                            opt.toLowerCase().includes(stockFormSegmentoSearch.toLowerCase())
+                          ).map((opt) => (
+                            <button
+                              key={opt}
+                              type="button"
+                              onClick={() => {
+                                  setStockEditCategory(opt);
+                                  setStockFormSegmentoSearch(opt);
+                                  setShowStockFormSegmentoDropdown(false);
+                              }}
+                              className="w-full text-left font-semibold text-[11px] text-slate-700 px-3 py-2 cursor-pointer hover:bg-emerald-50 hover:text-emerald-800 transition-colors flex items-center justify-between border-y-0 border-x-0 bg-transparent"
+                            >
+                              <span>{opt}</span>
+                              {stockEditCategory === opt && (
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0"></span>
+                              )}
+                            </button>
+                          ))}
+                          {SEGM_OPTIONS.filter((opt) => 
+                            opt.toLowerCase().includes(stockFormSegmentoSearch.toLowerCase())
+                          ).length === 0 && (
+                            <div className="p-3 text-center text-xs text-slate-400 italic">
+                              Nenhuma categoria encontrada...
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {showStockFormSegmentoDropdown && (
+                      <div 
+                        className="fixed inset-0 z-40 outline-none" 
+                        onClick={() => setShowStockFormSegmentoDropdown(false)}
+                      />
+                    )}
+                  </div>
+
+                  {/* Quantidade do Produto (Apenas Leitura no Ajuste de Estoque) */}
+                  <div className="space-y-1.5 bg-slate-50 border border-slate-200/60 rounded-2xl p-4">
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 block mb-1">
+                      {stockEditQuantity > 1 ? 'Quantidades' : 'Quantidade'}
+                    </label>
+                    <div className="flex items-center justify-between">
+                      <span className="font-sans font-black text-slate-700 text-xs">
+                        {stockEditQuantity} {stockEditQuantity > 1 ? 'quantidades' : 'quantidade'}
+                      </span>
+                      <span className="text-[9px] font-bold text-amber-600 bg-amber-50 px-2.5 py-1 rounded-lg border border-amber-100">
+                        Editar na pág. do Produto
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Quantidade de Mercadorias de Vendas */}
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 ml-1">QUANTIDADE DE MERCADORIAS DE VENDAS</label>
+                    <input
+                      type="number"
+                      placeholder="Ex: 10"
+                      value={stockEditSalesMerchandiseQty === 0 ? '' : stockEditSalesMerchandiseQty}
+                      onChange={(e) => setStockEditSalesMerchandiseQty(Number(e.target.value))}
+                      className="w-full py-3 px-4 bg-slate-50 border border-slate-200 rounded-xl font-sans font-bold text-slate-800 focus:outline-none focus:border-emerald-500 focus:bg-white text-xs transition-colors"
+                    />
+                  </div>
+
+                  {/* Mercadoria de Vendas Options */}
+                  <div className="space-y-2 pt-2">
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 ml-1 block">MERCADORIA DE VENDAS</label>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                      {UNITS.map((u) => {
+                        const Icon = u.icon;
+                        const isActive = stockEditUnit === u.id;
+                        return (
+                          <button
+                            key={u.id}
+                            type="button"
+                            onClick={() => setStockEditUnit(u.id as any)}
+                            className={cn(
+                              "flex flex-col items-center justify-center gap-1.5 p-3 rounded-xl border border-2 transition-all duration-150",
+                              isActive
+                                ? "border-emerald-500 bg-emerald-50/50 text-emerald-700 font-extrabold shadow-sm"
+                                : "border-slate-100 bg-slate-50 text-slate-400 opacity-75 hover:opacity-100"
+                            )}
+                          >
+                            <Icon size={16} />
+                            <span className="text-[8px] font-black tracking-tight">{u.label}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Saving buttons */}
+                  <div className="flex flex-col gap-2 pt-4 border-t border-slate-100">
+                    <button
+                      onClick={handleSaveStockEdit}
+                      className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-xs uppercase tracking-widest transition-all shadow-[0_4px_12px_rgba(0,0,0,0.08)] flex items-center justify-center gap-1.5"
+                    >
+                      <CheckCircle size={14} /> Salvar Estoque
+                    </button>
+                    <button
+                      onClick={cancelStockEdit}
+                      className="w-full py-3 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl font-bold text-xs uppercase tracking-widest transition-all"
+                    >
+                      Cancelar Edição
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center text-center justify-center py-6 px-4 space-y-4">
+                  <div className="w-14 h-14 bg-emerald-50 text-emerald-600 rounded-full flex items-center justify-center animate-pulse">
+                    <Scale size={28} />
+                  </div>
+                  <div className="space-y-1 px-2">
+                    <h4 className="font-sans font-bold text-slate-800 text-xs">Adicione seu Estoque</h4>
+                    <p className="font-sans text-[11px] text-slate-400 font-medium leading-relaxed">
+                      O produto cadastrado listado aqui tá salvo na lista de Produto, você pode criar um estoque aqui com as opções disponíveis: "quantidade", "mercadoria de venda", "tamanho".
+                      <br />
+                      A categoria tá visível pra pesquisar e facilitar a sua lista!
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Right side: List of registered products */}
+            <div className="lg:col-span-7 bg-white rounded-[32px] p-6 md:p-8 border border-slate-100 shadow-[0_4px_12px_rgba(0,0,0,0.08)] space-y-6">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-5">
+                <div>
+                  <h3 className="text-sm font-black text-slate-850 uppercase tracking-wider">Quantidades Cadastradas ({products.length})</h3>
+                </div>
+
+                {/* Filters */}
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                  {/* Search by Name */}
+                  <div className="relative">
+                    <input
+                      type="text"
+                      placeholder="Pesquisar produto..."
+                      value={quantitySearch}
+                      onChange={(e) => setQuantitySearch(e.target.value)}
+                      className="py-1.5 pl-8 pr-3 bg-slate-50 border border-slate-200 rounded-xl text-[10px] font-bold text-slate-700 outline-none focus:border-emerald-500 transition-colors bg-white w-full sm:w-36"
+                    />
+                    <div className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400">
+                      <Search size={10} />
+                    </div>
+                  </div>
+
+                  {/* Filter by Category */}
+                  <select
+                    value={quantityFilterCategory}
+                    onChange={(e) => setQuantityFilterCategory(e.target.value)}
+                    className="py-1.5 px-3 bg-slate-50 border border-slate-200 rounded-xl text-[10px] font-bold text-slate-700 outline-none focus:border-emerald-500 transition-colors w-full sm:w-40 cursor-pointer text-ellipsis overflow-hidden"
+                  >
+                    <option value="">Todas as Categorias</option>
+                    {SEGM_OPTIONS.map((opt) => (
+                      <option key={opt} value={opt} className="font-sans font-semibold text-xs text-slate-700">
+                        {opt}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* Grid of items */}
+              <div className="space-y-3.5 max-h-[500px] overflow-y-auto pr-1">
+                {(() => {
+                  const filtered = products.filter((p) => {
+                    const matchSearch = p.name.toLowerCase().includes(quantitySearch.toLowerCase());
+                    const matchCategory = quantityFilterCategory ? p.segmento === quantityFilterCategory : true;
+                    return matchSearch && matchCategory;
+                  });
+
+                  if (filtered.length === 0) {
+                    return (
+                      <div className="p-8 text-center text-xs text-slate-400 italic">
+                        Nenhum produto cadastrado corresponde aos critérios de pesquisa.
+                      </div>
+                    );
+                  }
+
+                  return filtered.map((p) => {
+                    // Calc total sold from history
+                    const totalSold = salesHistory.reduce((acc, sale) => {
+                      if (!sale || !sale.items) return acc;
+                      const matched = sale.items.filter((it: any) => it.name.trim().toLowerCase() === p.name.trim().toLowerCase());
+                      const sum = matched.reduce((s: number, it: any) => s + (it.quantity || 0), 0);
+                      return acc + sum;
+                    }, 0);
+
+                    const q0 = p.quantity || 0;
+                    const m = p.salesMerchandiseQty || 0;
+
+                    let remaining = 0;
+                    let remainingSalesMerchandiseQty = 0;
+
+                    if (m <= 0) {
+                      remaining = Math.max(0, q0 - totalSold);
+                      remainingSalesMerchandiseQty = 0;
+                    } else {
+                      const totalCapacity = q0 * m;
+                      if (totalSold >= totalCapacity) {
+                        remaining = 0;
+                        remainingSalesMerchandiseQty = 0;
+                      } else {
+                        const q = Math.floor(totalSold / m);
+                        const r = totalSold % m;
+                        if (r === 0) {
+                          remaining = q0 - q;
+                          remainingSalesMerchandiseQty = m;
+                        } else {
+                          remaining = q0 - q;
+                          remainingSalesMerchandiseQty = m - r;
+                        }
+                      }
+                    }
+
+                    return (
+                      <div 
+                        key={p.id} 
+                        className={cn(
+                          "p-4 rounded-2xl border transition-all duration-250 flex items-center justify-between gap-4 shadow-sm",
+                          stockEditProductId === p.id 
+                            ? "border-emerald-400 bg-emerald-50/20 ring-2 ring-emerald-100" 
+                            : "border-slate-100 hover:border-slate-200/80 bg-slate-50/30"
+                        )}
+                      >
+                        <div className="space-y-2 flex-1">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <span className="font-sans font-black text-slate-800 text-xs tracking-tight">{p.name}</span>
+                            {p.segmento && (
+                              <span className="text-[8px] font-black tracking-wide text-amber-800 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-100/50 uppercase">
+                                {p.segmento}
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Inventory numbers row with Portuguese label specifications */}
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1.5 border-t border-slate-100/40">
+                            {/* Group: Adição */}
+                            <div className="space-y-1.5">
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-[9px] font-black tracking-widest text-slate-400 uppercase">Adição</span>
+                                <div className="h-[1px] bg-slate-100/80 flex-1"></div>
+                              </div>
+                              <div className="grid grid-cols-2 gap-1.5">
+                                {/* Quantidade Gray */}
+                                <div className="bg-slate-100/80 border border-slate-200/40 rounded-xl p-2 text-center flex flex-col justify-center min-h-[52px]">
+                                  <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">
+                                    {p.quantity > 1 ? 'Quantidades' : 'Quantidade'}
+                                  </span>
+                                  <span className="font-bold text-[11px] text-slate-600 block text-nowrap">
+                                    {p.quantity} {p.quantity > 1 ? 'quantidades' : 'quantidade'}
+                                  </span>
+                                </div>
+
+                                {/* Sold count (rose) */}
+                                <div className="bg-rose-50/40 border border-rose-100/45 rounded-xl p-2 text-center flex flex-col justify-center min-h-[52px]">
+                                  <span className="text-[8px] font-bold text-rose-400 uppercase tracking-widest block mb-0.5">
+                                    {totalSold === 0 || totalSold > 1 ? 'Vendidos' : 'Vendido'}
+                                  </span>
+                                  <span className="font-bold text-[11px] text-rose-700 block text-nowrap">
+                                    {totalSold === 0 ? '0 vendidos' : `${totalSold} ${totalSold > 1 ? 'quantidades' : 'quantidade'}`}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Group: Estoque */}
+                            <div className="space-y-1.5">
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-[9px] font-black tracking-widest text-slate-400 uppercase">Estoque</span>
+                                <div className="h-[1px] bg-slate-100/80 flex-1"></div>
+                              </div>
+                              <div className="grid grid-cols-2 gap-1.5">
+                                {/* Quantidade Green (was Contagem) */}
+                                <div className={cn(
+                                  "border rounded-xl p-2 text-center flex flex-col justify-center min-h-[52px]",
+                                  remaining > 0 
+                                    ? "bg-emerald-50/40 border-emerald-100/45 text-emerald-800" 
+                                    : "bg-slate-100/95 border-slate-200 text-slate-500"
+                                )}>
+                                  <span className="text-[8px] font-bold uppercase tracking-widest block mb-0.5">
+                                    {remaining > 1 ? 'Quantidades' : 'Quantidade'}
+                                  </span>
+                                  <span className="font-black text-[11px] block text-nowrap">
+                                    {remaining} {remaining > 1 ? 'quantidades' : 'quantidade'}
+                                  </span>
+                                </div>
+
+                                {/* Mercadoria de Venda (blue) */}
+                                <div className="bg-blue-50/40 border border-blue-100/45 rounded-xl p-2 text-center text-blue-800 flex flex-col justify-center min-h-[52px]">
+                                  <span className="text-[8px] font-bold uppercase tracking-widest block mb-0.5">
+                                    {remainingSalesMerchandiseQty > 1 ? 'Mercadorias de Vendas' : 'Mercadoria de Venda'}
+                                  </span>
+                                  <span className="font-extrabold text-[11px] block text-nowrap">
+                                    {remainingSalesMerchandiseQty} {formatUnitLabel(remainingSalesMerchandiseQty, p.unit)}
+                                  </span>
+                                  {totalSold > 0 && (
+                                    <span className="text-[8.5px] font-semibold text-blue-600 block mt-0.5 leading-tight text-nowrap">
+                                      Vendidos: {totalSold} {formatUnitLabel(totalSold, p.unit)}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Pencil Edit button */}
+                        <div className="shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setStockEditProductId(p.id);
+                              setStockEditName(p.name);
+                              setStockEditQuantity(p.quantity);
+                              setStockEditUnit(p.unit);
+                              setStockEditCategory(p.segmento || '');
+                              setStockFormSegmentoSearch(p.segmento || '');
+                              setStockEditSalesMerchandiseQty(p.salesMerchandiseQty || 0);
+                            }}
+                            className="w-8 h-8 rounded-xl bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-500 hover:text-slate-800 flex items-center justify-center transition-colors shadow-sm"
+                            title="Editar estoque do produto"
+                          >
+                            <Pencil size={12} className="text-slate-500" />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  });
+                })()}
+              </div>
+            </div>
+          </div>
         </div>
       ) : (
         <div className="space-y-6 max-w-4xl mx-auto pb-8">
@@ -2429,7 +3182,13 @@ const CalculatorScreen = ({
 
                               {item.segmento && (
                                 <span className="text-[10px] text-slate-500 font-semibold block">
-                                  Segmento / Categoria de Venda: <span className="text-amber-700 font-extrabold">{item.segmento}</span>
+                                  Categoria: <span className="text-amber-700 font-extrabold">{item.segmento}</span>
+                                </span>
+                              )}
+
+                              {item.tamanho && (
+                                <span className="text-[10px] text-slate-500 font-semibold block">
+                                  Tamanho: <span className="text-blue-600 font-extrabold">{item.tamanho}</span>
                                 </span>
                               )}
                             </div>
