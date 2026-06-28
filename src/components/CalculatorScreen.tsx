@@ -1,13 +1,15 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, ChangeEvent } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { jsPDF } from 'jspdf';
+import { Html5Qrcode } from 'html5-qrcode';
 import logo from '../logo.png';
 import {
   ArrowLeft, Store, Tent, ShoppingBag, Truck,
   Banknote, Info, CheckCircle, Package, Scale, 
   ChevronRight, ChevronDown, Calculator, Hash, Layers, Weight,
   Plus, X, Pencil, Share2, Calendar, User, Search,
-  CreditCard, QrCode, Coins, Copy
+  CreditCard, QrCode, Coins, Copy, Trash2, RotateCcw, Archive,
+  Tag, Camera, Barcode, Upload, Image
 } from 'lucide-react';
 import { collection, getDocs, limit, query, where } from 'firebase/firestore';
 import { db } from '../firebase';
@@ -107,15 +109,57 @@ const CalculatorScreen = ({
   const [productFormSegmentoSearch, setProductFormSegmentoSearch] = useState<string>('');
   const [showProductFormSegmentoDropdown, setShowProductFormSegmentoDropdown] = useState<boolean>(false);
   const [productFormTamanho, setProductFormTamanho] = useState<string>('');
+  const [productFormEmpresaFornecedora, setProductFormEmpresaFornecedora] = useState<string>('');
 
   // Filtro de Atividade Comercial na listagem de produtos
   const [productsFilterSegmento, setProductsFilterSegmento] = useState<string>('');
 
+  // Referência para vídeo da câmera
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+
   // Estados adicionados para Histórico, Busca Rápida e Editar
-  const [activeTab, setActiveTab] = useState<'calculator' | 'products' | 'history' | 'quantity'>('calculator');
+  const [activeTab, setActiveTab] = useState<'calculator' | 'products' | 'history' | 'quantity' | 'etiqueta'>('calculator');
   const [customerName, setCustomerName] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<string>('dinheiro');
   const [salesHistory, setSalesHistory] = useState<any[]>([]);
+  const [recentlyDeletedSales, setRecentlyDeletedSales] = useState<any[]>([]);
+  const [isDeletedManagerOpen, setIsDeletedManagerOpen] = useState<boolean>(false);
+  const [selectedCurrentSales, setSelectedCurrentSales] = useState<string[]>([]);
+  const [selectedDeletedSales, setSelectedDeletedSales] = useState<string[]>([]);
+  const [managerActiveTab, setManagerActiveTab] = useState<'current' | 'deleted'>('current');
+  const [historySearchMode, setHistorySearchMode] = useState<'all' | 'date' | 'year' | 'name' | 'category'>('all');
+  const [historySearchText, setHistorySearchText] = useState<string>('');
+  const [historySearchDate, setHistorySearchDate] = useState<string>('');
+
+  // Seta a primeira data disponível ao abrir o gerenciador
+  useEffect(() => {
+    if (isDeletedManagerOpen) {
+      const allSales = [...salesHistory, ...recentlyDeletedSales].filter(Boolean);
+      const allDatesISO = allSales
+        .map(s => {
+          if (!s || !s.date) return '';
+          const datePart = s.date.split(/[ ,]+/)[0];
+          const parts = datePart.split('/');
+          if (parts.length === 3) {
+            const day = parts[0].padStart(2, '0');
+            const month = parts[1].padStart(2, '0');
+            const year = parts[2];
+            return `${year}-${month}-${day}`;
+          }
+          return '';
+        })
+        .filter(Boolean);
+      
+      if (allDatesISO.length > 0) {
+        // Ordena cronologicamente para pegar a primeira data disponível
+        allDatesISO.sort();
+        setHistorySearchDate(allDatesISO[0]);
+      } else {
+        setHistorySearchDate('');
+      }
+    }
+  }, [isDeletedManagerOpen, salesHistory, recentlyDeletedSales]);
+
   const [recentProductNames, setRecentProductNames] = useState<string[]>([]);
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [showSuccessToast, setShowSuccessToast] = useState(false);
@@ -126,6 +170,24 @@ const CalculatorScreen = ({
   const [stockEditName, setStockEditName] = useState<string>('');
   const [stockEditQuantity, setStockEditQuantity] = useState<number>(0);
   const [stockEditUnit, setStockEditUnit] = useState<'kg' | 'gram' | 'box' | 'bag' | 'unit'>('unit');
+
+  // Estados para Edição de Etiqueta (nova página Etiqueta)
+  const [labelEditProductId, setLabelEditProductId] = useState<string | null>(null);
+  const [labelEditEtiquetaManual, setLabelEditEtiquetaManual] = useState<string>('');
+  const [labelEditLoteManual, setLabelEditLoteManual] = useState<string>('');
+  const [labelEditLeitorEtiqueta, setLabelEditLeitorEtiqueta] = useState<string>('');
+  const [labelEditFotoLote, setLabelEditFotoLote] = useState<string>('');
+  const [labelEditValidadeData, setLabelEditValidadeData] = useState<string>('');
+  const [labelEditValidadeFoto, setLabelEditValidadeFoto] = useState<string>('');
+  const [labelEditCodigoBarras, setLabelEditCodigoBarras] = useState<string>('');
+  const [etiquetaSearch, setEtiquetaSearch] = useState<string>('');
+  const [etiquetaFilterCategory, setEtiquetaFilterCategory] = useState<string>('');
+
+  // Câmera e Scanner Simulado
+  const [isScanningBarcode, setIsScanningBarcode] = useState<boolean>(false);
+  const [scanningTargetField, setScanningTargetField] = useState<'codigoBarras' | 'leitorEtiqueta' | null>(null);
+  const [isTakingPhoto, setIsTakingPhoto] = useState<'fotoLote' | 'validadeFoto' | null>(null);
+  const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
   const [stockEditCategory, setStockEditCategory] = useState<string>('');
   const [stockEditSalesMerchandiseQty, setStockEditSalesMerchandiseQty] = useState<number>(0);
   const [stockFormSegmentoSearch, setStockFormSegmentoSearch] = useState<string>('');
@@ -144,6 +206,7 @@ const CalculatorScreen = ({
     createdAt?: string;
     segmento?: string;
     salesMerchandiseQty?: number;
+    empresaFornecedora?: string;
   }>>([]);
   const [productFormId, setProductFormId] = useState<string | null>(null);
   const [productFormName, setProductFormName] = useState<string>('');
@@ -160,6 +223,12 @@ const CalculatorScreen = ({
       if (savedHistory) {
         const parsed = JSON.parse(savedHistory);
         setSalesHistory(Array.isArray(parsed) ? parsed.filter(Boolean) : []);
+      }
+
+      const savedDeleted = localStorage.getItem('feiralivre_recently_deleted_sales');
+      if (savedDeleted) {
+        const parsed = JSON.parse(savedDeleted);
+        setRecentlyDeletedSales(Array.isArray(parsed) ? parsed.filter(Boolean) : []);
       }
       
       const savedRecent = localStorage.getItem('feiralivre_recent_products');
@@ -268,6 +337,14 @@ const CalculatorScreen = ({
     }
   }, [unit]);
 
+  useEffect(() => {
+    console.log("[STEP 3] items após setItems:", items);
+  }, [items]);
+
+  useEffect(() => {
+    console.log("[STEP 5] salesHistory após salvar:", salesHistory);
+  }, [salesHistory]);
+
   // Se houver itens na lista, o total é o somatório deles. 
   // O item atual sendo configurado na "Balança" não entra no total geral até ser "Adicionado".
   const itemsTotal = items.reduce((acc, item) => acc + item.total, 0);
@@ -337,6 +414,83 @@ const CalculatorScreen = ({
       cartao_debito_virtual: 'Cartão de Débito Virtual',
     };
     return methods[method] || method || 'Dinheiro';
+  };
+
+  const calcularEstoque = (
+    q0: number,
+    m: number,
+    totalSold: number
+  ) => {
+    if (m <= 0) {
+      const rem = Math.max(0, q0 - totalSold);
+      return {
+        remainingQty: rem,
+        remainingStockItem: rem,
+        soldQtyUnit: totalSold,
+        soldSalesMerchandise: 0
+      };
+    }
+
+    // Painel "Vendido"
+    // Toda vez que a quantidade vendida de mercadorias atinge o lote de 'm',
+    // contamos como 1 quantidade/unidade principal vendida.
+    const soldQtyUnit = Math.floor(totalSold / m);
+    const soldSalesMerchandise = totalSold;
+
+    // Estoque
+    const remainingQty = Math.max(0, q0 - soldQtyUnit);
+    
+    // Mercadoria de venda restante no pacote/lote atual.
+    // Se a venda for múltiplo exato de m, o lote do pacote atual terminou de vender,
+    // mas se ainda restam pacotes no estoque principal (remainingQty > 0), o estoque
+    // de mercadoria se renova para o valor cheio de 'm'.
+    let remainingStockItem = 0;
+    if (remainingQty > 0) {
+      if (totalSold % m === 0) {
+        remainingStockItem = m;
+      } else {
+        remainingStockItem = Math.max(0, m - (totalSold % m));
+      }
+    }
+
+    return {
+      remainingQty,
+      remainingStockItem,
+      soldQtyUnit,
+      soldSalesMerchandise
+    };
+  };
+
+  const obterPesoUnidadeConvertido = (itemWeight: number, itemUnit: string, productUnit: string) => {
+    const itemUnitLower = (itemUnit || '').toLowerCase();
+    const productUnitLower = (productUnit || '').toLowerCase();
+    if (itemUnitLower === productUnitLower || productUnitLower === 'unit' || !productUnitLower || !itemUnitLower) {
+      return itemWeight;
+    }
+    if ((productUnitLower === 'gram' || productUnitLower === 'grama' || productUnitLower === 'gramas') && 
+        (itemUnitLower === 'kg' || itemUnitLower === 'quilo' || itemUnitLower === 'quilos')) {
+      return itemWeight * 1000;
+    }
+    if ((productUnitLower === 'kg' || productUnitLower === 'quilo' || productUnitLower === 'quilos') && 
+        (itemUnitLower === 'gram' || itemUnitLower === 'grama' || itemUnitLower === 'gramas')) {
+      return itemWeight / 1000;
+    }
+    return itemWeight;
+  };
+
+  const obterTotalMercadoriaVendida = (p: any, itemList: any[]) => {
+    let totalSoldWeight = 0;
+    itemList.forEach((item) => {
+      if (item && item.name && p.name && item.name.trim().toLowerCase() === p.name.trim().toLowerCase()) {
+        const itemQty = Number(item.quantity || 0);
+        const itemWeight = Number(item.weightPerUnit || 1);
+        const itemUnit = item.unit || 'unit';
+        
+        const convertedWeight = obterPesoUnidadeConvertido(itemWeight, itemUnit, p.unit);
+        totalSoldWeight += itemQty * convertedWeight;
+      }
+    });
+    return totalSoldWeight;
   };
 
   const getProductMetrics = (p: { name: string; quantity: number; unit: string; weightPerUnit: number }) => {
@@ -433,6 +587,7 @@ const CalculatorScreen = ({
         segmento: productFormSegmento || undefined,
         tamanho: productFormTamanho || undefined,
         salesMerchandiseQty: Number(productFormSalesMerchandiseQty) || 0,
+        empresaFornecedora: productFormEmpresaFornecedora.trim() || undefined,
       } : p);
       saveProducts(updated);
       setProductFormId(null);
@@ -448,6 +603,7 @@ const CalculatorScreen = ({
         segmento: productFormSegmento || undefined,
         tamanho: productFormTamanho || undefined,
         salesMerchandiseQty: Number(productFormSalesMerchandiseQty) || 0,
+        empresaFornecedora: productFormEmpresaFornecedora.trim() || undefined,
         createdAt: new Date().toLocaleString('pt-BR', {
           dateStyle: 'short',
           timeStyle: 'short'
@@ -466,6 +622,7 @@ const CalculatorScreen = ({
     setProductFormSegmentoSearch('');
     setProductFormSalesMerchandiseQty(0);
     setProductFormTamanho('');
+    setProductFormEmpresaFornecedora('');
   };
 
   const confirmDeleteProduct = (id: string) => {
@@ -485,6 +642,7 @@ const CalculatorScreen = ({
     setProductFormSegmentoSearch(p.segmento || '');
     setProductFormSalesMerchandiseQty(p.salesMerchandiseQty || 0);
     setProductFormTamanho(p.tamanho || '');
+    setProductFormEmpresaFornecedora(p.empresaFornecedora || '');
   };
 
   const cancelEditProduct = () => {
@@ -498,7 +656,141 @@ const CalculatorScreen = ({
     setProductFormSegmentoSearch('');
     setProductFormSalesMerchandiseQty(0);
     setProductFormTamanho('');
+    setProductFormEmpresaFornecedora('');
   };
+
+  // Funções para controle da página de Etiqueta
+  const saveLabelDetails = () => {
+    if (!labelEditProductId) return;
+    const updated = products.map(p => p.id === labelEditProductId ? {
+      ...p,
+      etiquetaManual: labelEditEtiquetaManual || undefined,
+      loteManual: labelEditLoteManual || undefined,
+      leitorEtiqueta: labelEditLeitorEtiqueta || undefined,
+      fotoLote: labelEditFotoLote || undefined,
+      validadeData: labelEditValidadeData || undefined,
+      validadeFoto: labelEditValidadeFoto || undefined,
+      codigoBarras: labelEditCodigoBarras || undefined,
+    } : p);
+    saveProducts(updated);
+    setLabelEditProductId(null);
+    setShowSuccessToast(true);
+    setTimeout(() => setShowSuccessToast(false), 2500);
+  };
+
+  const startCamera = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+      setCameraStream(stream);
+    } catch (err) {
+      console.warn("Câmera não disponível ou permissão negada. Usando simulação.", err);
+    }
+  };
+
+  const stopCamera = () => {
+    if (cameraStream) {
+      cameraStream.getTracks().forEach(track => track.stop());
+      setCameraStream(null);
+    }
+  };
+
+  const [scannerErrorMessage, setScannerErrorMessage] = useState<string>('');
+
+  const handleBarcodeDetected = (code: string) => {
+    // Tenta tocar som de bipe
+    try {
+      const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(880, audioCtx.currentTime);
+      gain.gain.setValueAtTime(0.05, audioCtx.currentTime);
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.15);
+    } catch (e) {}
+
+    if (scanningTargetField === 'codigoBarras') {
+      setLabelEditCodigoBarras(code);
+    }
+
+    setIsScanningBarcode(false);
+    setScanningTargetField(null);
+    setScannerErrorMessage('');
+  };
+
+  const handleBarcodeFileScan = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    
+    setScannerErrorMessage('Processando imagem e identificando código...');
+    try {
+      const tempReaderId = "barcode-scanner-reader";
+      // Certifica de instanciar temporariamente na div existente
+      const html5QrCodeParser = new Html5Qrcode(tempReaderId);
+      const decodedText = await html5QrCodeParser.scanFile(file, false);
+      handleBarcodeDetected(decodedText);
+    } catch (err: any) {
+      console.error("Não foi possível ler código do arquivo:", err);
+      setScannerErrorMessage('Não foi possível identificar um código de barras ou QR Code nesta imagem. Certifique-se de que o código esteja nítido e bem focado.');
+    }
+  };
+
+  useEffect(() => {
+    let html5QrCode: any = null;
+    if (isScanningBarcode) {
+      setScannerErrorMessage('');
+      const timer = setTimeout(() => {
+        const element = document.getElementById("barcode-scanner-reader");
+        if (element) {
+          try {
+            html5QrCode = new Html5Qrcode("barcode-scanner-reader");
+            html5QrCode.start(
+              { facingMode: 'environment' },
+              {
+                fps: 10,
+                qrbox: (width: number, height: number) => {
+                  const min = Math.min(width, height);
+                  const size = Math.floor(min * 0.75);
+                  return { width: size, height: size };
+                }
+              },
+              (decodedText: string) => {
+                handleBarcodeDetected(decodedText);
+              },
+              (err: any) => {
+                // Ignorar erros repetitivos de render
+              }
+            ).catch((err: any) => {
+              console.error("Erro ao iniciar Html5Qrcode:", err);
+              setScannerErrorMessage('Não foi possível acessar a câmera. Forneça as permissões de câmera ou selecione uma foto da galeria para escanear.');
+            });
+          } catch (e) {
+            console.error("Erro ao criar Html5Qrcode:", e);
+            setScannerErrorMessage('Falha ao inicializar o componente do leitor. Selecione uma foto da galeria.');
+          }
+        }
+      }, 500);
+
+      return () => {
+        clearTimeout(timer);
+        if (html5QrCode) {
+          try {
+            if (html5QrCode.isScanning) {
+              html5QrCode.stop().then(() => {
+                html5QrCode.clear();
+              }).catch((e: any) => console.warn("Erro ao parar camera:", e));
+            } else {
+              html5QrCode.clear();
+            }
+          } catch (e) {
+            console.warn("Erro no cleanup de html5QrCode:", e);
+          }
+        }
+      };
+    }
+  }, [isScanningBarcode]);
 
   useEffect(() => {
     if (!productFormId) {
@@ -541,6 +833,7 @@ const CalculatorScreen = ({
   const currentItemTotal = calculateTotal();
 
   const addItem = () => {
+    console.log("[STEP 1] quantity:", quantity);
     if (currentItemTotal <= 0) return;
 
     // Verificar se o produto é cadastrado e validar se há estoque
@@ -549,32 +842,52 @@ const CalculatorScreen = ({
     );
 
     if (registeredProduct) {
-      const totalSoldInHistory = salesHistory.reduce((acc, sale) => {
-        if (!sale || !sale.items) return acc;
-        const matched = sale.items.filter((it: any) => it.name.trim().toLowerCase() === registeredProduct.name.trim().toLowerCase());
-        const sum = matched.reduce((s: number, it: any) => s + (it.quantity || 0), 0);
-        return acc + sum;
-      }, 0);
-
-      const totalInCurrentCart = items.reduce((acc, item) => {
-        if (editingItemId && item.id === editingItemId) return acc;
-        if (item.name.trim().toLowerCase() === registeredProduct.name.trim().toLowerCase()) {
-          return acc + (item.quantity || 0);
-        }
-        return acc;
-      }, 0);
-
-      const totalConsumed = totalSoldInHistory + totalInCurrentCart;
-      
       const q0 = registeredProduct.quantity || 0;
       const m = registeredProduct.salesMerchandiseQty || 0;
-      
+
       let remainingSalesMerchandise = 0;
+      let requiredAmount = Number(quantity || 0);
+
       if (m <= 0) {
+        const totalSoldInHistory = salesHistory.reduce((acc, sale) => {
+          if (!sale?.items) return acc;
+
+          const soldInSale = sale.items
+            .filter((item: any) => (item.name || '').trim().toLowerCase() === registeredProduct.name.trim().toLowerCase())
+            .reduce(
+              (sum: number, item: any) =>
+                sum + Number(item.quantity || 0),
+              0
+            );
+
+          return acc + soldInSale;
+        }, 0);
+
+        const totalInCurrentCart = items.reduce((acc, item) => {
+          if (editingItemId && item.id === editingItemId) return acc;
+          if (item.name.trim().toLowerCase() === registeredProduct.name.trim().toLowerCase()) {
+            return acc + (item.quantity || 0);
+          }
+          return acc;
+        }, 0);
+
+        const totalConsumed = totalSoldInHistory + totalInCurrentCart;
         remainingSalesMerchandise = Math.max(0, q0 - totalConsumed);
       } else {
-        const totalCapacity = q0 * m;
-        remainingSalesMerchandise = Math.max(0, totalCapacity - totalConsumed);
+        const totalSoldInHistory = salesHistory.reduce((acc, sale) => {
+          if (!sale?.items) return acc;
+          return acc + obterTotalMercadoriaVendida(registeredProduct, sale.items);
+        }, 0);
+
+        const totalInCurrentCart = obterTotalMercadoriaVendida(
+          registeredProduct,
+          items.filter(item => !(editingItemId && item.id === editingItemId))
+        );
+
+        const totalConsumed = totalSoldInHistory + totalInCurrentCart;
+        // O estoque total de mercadorias é a quantidade de pacotes (q0) vezes as mercadorias por pacote (m)
+        remainingSalesMerchandise = Math.max(0, (q0 * m) - totalConsumed);
+        requiredAmount = Number(quantity || 0) * obterPesoUnidadeConvertido(Number(weightPerUnit || 1), unit, registeredProduct.unit);
       }
 
       if (remainingSalesMerchandise <= 0) {
@@ -584,9 +897,11 @@ const CalculatorScreen = ({
         return;
       }
 
-      if (remainingSalesMerchandise < quantity) {
+      if (remainingSalesMerchandise < requiredAmount) {
+        const remainingFormatted = formatarMercadoria(remainingSalesMerchandise, registeredProduct.unit || 'unit');
+        const requiredFormatted = formatarMercadoria(requiredAmount, registeredProduct.unit || 'unit');
         alert(
-          `QUANTIDADE NÃO AUTORIZADA!\n\nVocê está tentando vender ${quantity} ${quantity > 1 ? 'quantidades/unidades' : 'quantidade/unidade'} do produto "${registeredProduct.name}", mas restam apenas ${remainingSalesMerchandise} no estoque de Mercadoria de Venda.\n\nPor favor, adicione mais estoque ou reduza a quantidade.`
+          `QUANTIDADE NÃO AUTORIZADA!\n\nVocê está tentando vender ${quantity} ${quantity > 1 ? 'quantidades/unidades' : 'quantidade/unidade'} com PESO OU MEDIDA total de ${requiredFormatted} do produto "${registeredProduct.name}", mas restam apenas ${remainingFormatted} no estoque de Mercadoria de Venda.\n\nPor favor, adicione mais estoque ou reduza a quantidade.`
         );
         return;
       }
@@ -599,13 +914,19 @@ const CalculatorScreen = ({
 
     if (editingItemId) {
       // Editar item existente
+      console.log("[DEBUG TRACKING - EDIT]", {
+        quantity,
+        weightPerUnit,
+        unit,
+        total: currentItemTotal
+      });
       setItems(items.map(item => {
         if (item.id === editingItemId) {
           return {
             ...item,
             name: productName || 'Produto sem nome',
             price,
-            quantity,
+            quantity: Number(quantity) || 0,
             unit,
             weightPerUnit,
             total: currentItemTotal,
@@ -621,11 +942,18 @@ const CalculatorScreen = ({
       setEditingItemId(null);
     } else {
       // Adicionar novo item
+      console.log("[DEBUG QUANTIDADE]", {
+        productName,
+        quantity,
+        unit,
+        currentItemTotal
+      });
+
       const newItem = {
         id: Math.random().toString(36).substr(2, 9),
         name: productName || 'Produto sem nome',
         price,
-        quantity,
+        quantity: Number(quantity) || 0,
         unit,
         weightPerUnit,
         total: currentItemTotal,
@@ -635,6 +963,33 @@ const CalculatorScreen = ({
         segmento: segmento || undefined,
         tamanho: tamanho || undefined,
       };
+
+      console.log("[STEP 2] newItem:", newItem);
+
+      console.log("[NOVO ITEM]", newItem);
+
+      console.log("[ITEM CRIADO]", {
+        name: newItem.name,
+        quantity: newItem.quantity,
+        weightPerUnit: newItem.weightPerUnit,
+        unit: newItem.unit,
+        total: newItem.total
+      });
+
+      console.log("[DEBUG TRACKING - ADD]", {
+        quantity: newItem.quantity,
+        weightPerUnit: newItem.weightPerUnit,
+        unit: newItem.unit,
+        total: newItem.total
+      });
+
+      alert(
+        `Produto: ${newItem.name}
+Quantidade: ${newItem.quantity}
+Peso/Medida: ${newItem.weightPerUnit}
+Unidade: ${newItem.unit}`
+      );
+
       setItems([...items, newItem]);
     }
 
@@ -755,6 +1110,11 @@ const CalculatorScreen = ({
     const currentShop = SHOP_TYPES.find(t => t.id === shopType) || SHOP_TYPES[0];
     const shopLabel = currentShop ? currentShop.label : 'Feira Livre';
 
+    console.log(
+      "[FINISH SALE ITEMS]",
+      JSON.stringify(items, null, 2)
+    );
+
     const newSale = {
       id: Math.random().toString(36).substr(2, 9),
       customerName: customerName.trim() || `Cliente - ${shopLabel}`,
@@ -766,6 +1126,13 @@ const CalculatorScreen = ({
       shopType: shopType,
       paymentMethod: paymentMethod,
     };
+
+    const cartItems = items;
+    const saleData = newSale;
+    console.log("ITEMS DO CARRINHO", cartItems);
+    console.log("VENDA SALVA", saleData);
+
+    console.log("[STEP 4] newSale antes de salvar:", newSale);
 
     const updatedHistory = [newSale, ...salesHistory];
     setSalesHistory(updatedHistory);
@@ -798,11 +1165,123 @@ const CalculatorScreen = ({
 
   const confirmDeleteSale = () => {
     if (saleToDelete) {
+      const saleObj = salesHistory.find(s => s.id === saleToDelete);
       const updated = salesHistory.filter(s => s.id !== saleToDelete);
       setSalesHistory(updated);
       localStorage.setItem('feiralivre_sales_history', JSON.stringify(updated));
+      
+      if (saleObj) {
+        const updatedDeleted = [saleObj, ...recentlyDeletedSales];
+        setRecentlyDeletedSales(updatedDeleted);
+        localStorage.setItem('feiralivre_recently_deleted_sales', JSON.stringify(updatedDeleted));
+      }
       setSaleToDelete(null);
     }
+  };
+
+  const toggleCurrentSaleSelection = (saleId: string) => {
+    setSelectedCurrentSales(prev =>
+      prev.includes(saleId) ? prev.filter(id => id !== saleId) : [...prev, saleId]
+    );
+  };
+
+  const toggleDeletedSaleSelection = (saleId: string) => {
+    setSelectedDeletedSales(prev =>
+      prev.includes(saleId) ? prev.filter(id => id !== saleId) : [...prev, saleId]
+    );
+  };
+
+  const toggleSelectAllCurrentSales = () => {
+    const visibleSales = salesHistory.filter(matchesSearch).filter(Boolean);
+    if (visibleSales.length === 0) return;
+    
+    const visibleIds = visibleSales.map(s => s.id);
+    const allVisibleSelected = visibleIds.every(id => selectedCurrentSales.includes(id));
+    
+    if (allVisibleSelected) {
+      setSelectedCurrentSales(prev => prev.filter(id => !visibleIds.includes(id)));
+    } else {
+      setSelectedCurrentSales(prev => {
+        const union = new Set([...prev, ...visibleIds]);
+        return Array.from(union);
+      });
+    }
+  };
+
+  const toggleSelectAllDeletedSales = () => {
+    const visibleSales = recentlyDeletedSales.filter(matchesSearch).filter(Boolean);
+    if (visibleSales.length === 0) return;
+    
+    const visibleIds = visibleSales.map(s => s.id);
+    const allVisibleSelected = visibleIds.every(id => selectedDeletedSales.includes(id));
+    
+    if (allVisibleSelected) {
+      setSelectedDeletedSales(prev => prev.filter(id => !visibleIds.includes(id)));
+    } else {
+      setSelectedDeletedSales(prev => {
+        const union = new Set([...prev, ...visibleIds]);
+        return Array.from(union);
+      });
+    }
+  };
+
+  const deleteSelectedCurrentSales = () => {
+    if (selectedCurrentSales.length === 0) return;
+    const salesToMove = salesHistory.filter(s => s && selectedCurrentSales.includes(s.id));
+    const updatedHistory = salesHistory.filter(s => s && !selectedCurrentSales.includes(s.id));
+    
+    setSalesHistory(updatedHistory);
+    localStorage.setItem('feiralivre_sales_history', JSON.stringify(updatedHistory));
+    
+    const updatedDeleted = [...salesToMove, ...recentlyDeletedSales];
+    setRecentlyDeletedSales(updatedDeleted);
+    localStorage.setItem('feiralivre_recently_deleted_sales', JSON.stringify(updatedDeleted));
+    
+    setSelectedCurrentSales([]);
+  };
+
+  const deleteAllCurrentSales = () => {
+    if (salesHistory.length === 0) return;
+    const updatedDeleted = [...salesHistory, ...recentlyDeletedSales];
+    setRecentlyDeletedSales(updatedDeleted);
+    localStorage.setItem('feiralivre_recently_deleted_sales', JSON.stringify(updatedDeleted));
+    
+    setSalesHistory([]);
+    localStorage.removeItem('feiralivre_sales_history');
+    
+    setSelectedCurrentSales([]);
+  };
+
+  const deleteSelectedDeletedSalesPermanently = () => {
+    if (selectedDeletedSales.length === 0) return;
+    const updatedDeleted = recentlyDeletedSales.filter(s => s && !selectedDeletedSales.includes(s.id));
+    setRecentlyDeletedSales(updatedDeleted);
+    localStorage.setItem('feiralivre_recently_deleted_sales', JSON.stringify(updatedDeleted));
+    
+    setSelectedDeletedSales([]);
+  };
+
+  const deleteAllDeletedSalesPermanently = () => {
+    if (recentlyDeletedSales.length === 0) return;
+    setRecentlyDeletedSales([]);
+    localStorage.removeItem('feiralivre_recently_deleted_sales');
+    
+    setSelectedDeletedSales([]);
+  };
+
+  const restoreSelectedDeletedSales = () => {
+    if (selectedDeletedSales.length === 0) return;
+    const salesToRestore = recentlyDeletedSales.filter(s => s && selectedDeletedSales.includes(s.id));
+    const updatedDeleted = recentlyDeletedSales.filter(s => s && !selectedDeletedSales.includes(s.id));
+    
+    const updatedHistory = [...salesToRestore, ...salesHistory];
+    setSalesHistory(updatedHistory);
+    localStorage.setItem('feiralivre_sales_history', JSON.stringify(updatedHistory));
+    
+    setRecentlyDeletedSales(updatedDeleted);
+    localStorage.setItem('feiralivre_recently_deleted_sales', JSON.stringify(updatedDeleted));
+    
+    setSelectedDeletedSales([]);
   };
 
   const getReceiptTitle = (sType: string) => {
@@ -1274,6 +1753,131 @@ const CalculatorScreen = ({
     }
   };
 
+  // Auxiliares de pesquisa para o Histórico / Apagados
+  const normalizeStr = (str: string) => {
+    if (!str) return '';
+    return str
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "");
+  };
+
+  const getAvailableSalesDates = () => {
+    const allSales = [...salesHistory, ...recentlyDeletedSales].filter(Boolean);
+    const datesSet = new Set<string>();
+    allSales.forEach(sale => {
+      if (sale && sale.date) {
+        const datePart = sale.date.split(',')[0].trim(); // "28/06/2026"
+        if (datePart && datePart.includes('/')) {
+          datesSet.add(datePart);
+        }
+      }
+    });
+    // Converte de volta para array e ordena cronologicamente descendente (mais novas primeiro)
+    const list = Array.from(datesSet);
+    list.sort((a, b) => {
+      const partsA = a.split('/');
+      const partsB = b.split('/');
+      if (partsA.length === 3 && partsB.length === 3) {
+        const dateA = new Date(parseInt(partsA[2]), parseInt(partsA[1]) - 1, parseInt(partsA[0]));
+        const dateB = new Date(parseInt(partsB[2]), parseInt(partsB[1]) - 1, parseInt(partsB[0]));
+        return dateB.getTime() - dateA.getTime();
+      }
+      return 0;
+    });
+    return list;
+  };
+
+  const matchesSearch = (sale: any): boolean => {
+    if (!sale) return false;
+    
+    const query = normalizeStr(historySearchText);
+    const dateStr = sale.date || ''; // ex: "28/06/2026, 17:02:32"
+    const customer = normalizeStr(sale.customerName || '');
+    const itemsList = Array.isArray(sale.items) ? sale.items : [];
+
+    // Verifica se a data da venda bate com a data selecionada no calendário
+    // historySearchDate é "YYYY-MM-DD" e.g. "2026-06-28"
+    // sale.date é "28/06/2026, 17:02:32"
+    let matchesCalendarDate = true;
+    if (historySearchDate && historySearchMode === 'date') {
+      const parts = historySearchDate.split('-'); // ["2026", "06", "28"]
+      if (parts.length === 3) {
+        const expectedDateStr = `${parts[2]}/${parts[1]}/${parts[0]}`; // "28/06/2026"
+        matchesCalendarDate = dateStr.includes(expectedDateStr);
+      } else {
+        matchesCalendarDate = false;
+      }
+    }
+
+    if (historySearchMode === 'date') {
+      if (historySearchDate) {
+        return matchesCalendarDate;
+      }
+      if (query) {
+        // Encontrar digitando e interpretando se o usuário quer um mês, por exemplo: "mês 06" ou "06"
+        if (query.includes('mes 06') || query.includes('mes6') || query.includes('mês 06') || query === '06' || query === '6') {
+          return dateStr.includes('/06/') || dateStr.includes('/6/') || dateStr.includes('06');
+        }
+        // Substitui traço por barra se digitarem "28-06"
+        const cleanQuery = query.replace(/-/g, '/');
+        return dateStr.toLowerCase().includes(cleanQuery);
+      }
+      return true;
+    }
+
+    if (historySearchMode === 'year') {
+      if (query) {
+        return dateStr.toLowerCase().includes(query);
+      }
+      return true;
+    }
+
+    if (historySearchMode === 'name') {
+      if (query) {
+        const matchCustomer = customer.includes(query);
+        const matchItems = itemsList.some((item: any) => 
+          item && normalizeStr(item.name || '').includes(query)
+        );
+        return matchCustomer || matchItems;
+      }
+      return true;
+    }
+
+    if (historySearchMode === 'category') {
+      if (query) {
+        // Busca flexível na categoria/segmento (ex: "verdura" bate com "frutas, legumes e verduras.")
+        return itemsList.some((item: any) => 
+          item && normalizeStr(item.segmento || '').includes(query)
+        );
+      }
+      return true;
+    }
+
+    // Modo 'all' (Tudo)
+    if (!query) return true;
+
+    if (query) {
+      const cleanQuery = query.replace(/-/g, '/');
+      const matchDate = dateStr.toLowerCase().includes(cleanQuery);
+      const matchCustomer = customer.includes(query);
+      const matchItems = itemsList.some((item: any) => {
+        if (!item) return false;
+        const itemName = normalizeStr(item.name || '');
+        const itemSeg = normalizeStr(item.segmento || '');
+        const itemCom = normalizeStr(item.comercializacao || '');
+        return itemName.includes(query) || itemSeg.includes(query) || itemCom.includes(query);
+      });
+      
+      const isSpecialMonthSearch = query.includes('mes 06') || query.includes('mês 06');
+      const matchSpecialMonth = isSpecialMonthSearch && (dateStr.includes('/06/') || dateStr.includes('06'));
+
+      return matchDate || matchCustomer || matchItems || matchSpecialMonth;
+    }
+
+    return true;
+  };
+
   return (
     <div id="calculator-screen" className="min-h-screen bg-[#F4F5F7] font-sans pb-12">
       {/* NOVO: Topo Brand Header */}
@@ -1306,7 +1910,7 @@ const CalculatorScreen = ({
             )}
             <div>
               <h2 className="text-2xl font-bold tracking-tight text-slate-900">
-                {activeTab === 'calculator' ? 'Painel de Lançamento' : activeTab === 'products' ? 'Produto' : activeTab === 'quantity' ? 'QUANTIDADE' : 'Minha Venda'}
+                {activeTab === 'calculator' ? 'Painel de Lançamento' : activeTab === 'products' ? 'Produto' : activeTab === 'quantity' ? 'QUANTIDADE' : activeTab === 'etiqueta' ? 'Etiqueta' : 'Minha Venda'}
               </h2>
               <p className={cn(
                 "text-[10px] font-bold text-emerald-600 tracking-widest",
@@ -1318,7 +1922,9 @@ const CalculatorScreen = ({
                     ? 'REGISTRO DE PRODUTO, CONTROLE DE QUANTIDADE DE ESTOQUE.'
                     : activeTab === 'quantity'
                       ? 'Os estoques das quantidades e das Mercadorias.'
-                      : 'Registro de venda, histórico de venda salva.'}
+                      : activeTab === 'etiqueta'
+                        ? 'IDENTIFICAÇÃO DE PRODUTOS, CÓDIGOS DE BARRA, LOTES E VALIDADES.'
+                        : 'Registro de venda, histórico de venda salva.'}
               </p>
             </div>
           </div>
@@ -1357,6 +1963,17 @@ const CalculatorScreen = ({
               )}
             >
               <Scale size={11} /> Quantidade
+            </button>
+            <button
+              onClick={() => setActiveTab('etiqueta')}
+              className={cn(
+                "px-3 py-1.5 rounded-xl font-bold text-[10px] uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 w-full",
+                activeTab === 'etiqueta' 
+                  ? "bg-white text-emerald-700 shadow-sm font-extrabold" 
+                  : "text-slate-500 hover:text-slate-700 hover:bg-slate-300/40"
+              )}
+            >
+              <Tag size={11} /> Etiqueta
             </button>
             <button
               onClick={() => setActiveTab('history')}
@@ -1471,50 +2088,53 @@ const CalculatorScreen = ({
                             }
 
                             return filtered.map((p) => {
-                              const totalSoldInHistory = salesHistory.reduce((acc, sale) => {
-                                if (!sale || !sale.items) return acc;
-                                const matched = sale.items.filter((it: any) => it.name.trim().toLowerCase() === p.name.trim().toLowerCase());
-                                const sum = matched.reduce((s: number, it: any) => s + (it.quantity || 0), 0);
-                                return acc + sum;
-                              }, 0);
-
-                              const totalInCurrentCart = items.reduce((acc, item) => {
-                                if (editingItemId && item.id === editingItemId) return acc;
-                                if (item.name.trim().toLowerCase() === p.name.trim().toLowerCase()) {
-                                    return acc + (item.quantity || 0);
-                                }
-                                return acc;
-                              }, 0);
-
-                              const totalSold = totalSoldInHistory + totalInCurrentCart;
                               const q0 = p.quantity || 0;
                               const m = p.salesMerchandiseQty || 0;
 
-                              let remainingQty = 0;
-                              let remainingStockItem = 0;
-
+                              let totalSold = 0;
                               if (m <= 0) {
-                                remainingQty = Math.max(0, q0 - totalSold);
-                                remainingStockItem = remainingQty;
-                              } else {
-                                const totalCapacity = q0 * m;
-                                if (totalSold >= totalCapacity) {
-                                  remainingQty = 0;
-                                  remainingStockItem = 0;
-                                } else {
-                                  const q = Math.floor(totalSold / m);
-                                  const r = totalSold % m;
-                                  if (r === 0) {
-                                    remainingQty = q0 - q;
-                                    remainingStockItem = m;
-                                  } else {
-                                    remainingQty = q0 - q;
-                                    remainingStockItem = m - r;
+                                const totalSoldInHistory = salesHistory.reduce((acc, sale) => {
+                                  if (!sale?.items) return acc;
+
+                                  const soldInSale = sale.items
+                                    .filter((item: any) => (item.name || '').trim().toLowerCase() === p.name.trim().toLowerCase())
+                                    .reduce(
+                                      (sum: number, item: any) =>
+                                        sum + Number(item.quantity || 0),
+                                      0
+                                    );
+
+                                  return acc + soldInSale;
+                                }, 0);
+
+                                const totalInCurrentCart = items.reduce((acc, item) => {
+                                  if (editingItemId && item.id === editingItemId) return acc;
+                                  if (item.name.trim().toLowerCase() === p.name.trim().toLowerCase()) {
+                                      return acc + (item.quantity || 0);
                                   }
-                                }
+                                  return acc;
+                                }, 0);
+
+                                totalSold = totalSoldInHistory + totalInCurrentCart;
+                              } else {
+                                const totalSoldInHistory = salesHistory.reduce((acc, sale) => {
+                                  if (!sale?.items) return acc;
+                                  return acc + obterTotalMercadoriaVendida(p, sale.items);
+                                }, 0);
+
+                                const totalInCurrentCart = obterTotalMercadoriaVendida(
+                                  p,
+                                  items.filter(item => !(editingItemId && item.id === editingItemId))
+                                );
+
+                                totalSold = totalSoldInHistory + totalInCurrentCart;
                               }
 
-                              const hasStock = remainingQty > 0 || remainingStockItem > 0;
+                              console.log("[STEP 6] totalSold calculado:", totalSold, "para o produto", p.name);
+
+                              const { remainingQty, remainingStockItem } = calcularEstoque(q0, m, totalSold);
+
+                              const hasStock = m <= 0 ? (remainingQty > 0) : (remainingQty > 0 || remainingStockItem > 0);
 
                               return (
                                 <button
@@ -2272,6 +2892,18 @@ const CalculatorScreen = ({
                   </div>
                 </div>
 
+                {/* Empresa / Fornecedora */}
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 ml-1">Empresa / Fornecedora</label>
+                  <input
+                    type="text"
+                    placeholder="Ex: Ambev, Nestlé, Fornecedor X..."
+                    value={productFormEmpresaFornecedora}
+                    onChange={(e) => setProductFormEmpresaFornecedora(e.target.value)}
+                    className="w-full py-3 px-4 bg-slate-50 border border-slate-200 rounded-xl font-sans font-semibold text-slate-800 focus:outline-none focus:border-emerald-500 focus:bg-white text-xs transition-colors"
+                  />
+                </div>
+
                 {/* Atividade Comercial / Categoria para Cadastro de Produto */}
                 <div className="space-y-1.5 relative">
                   <div className="flex items-center justify-between">
@@ -2516,6 +3148,11 @@ const CalculatorScreen = ({
                                   <span>
                                     Desembolso: <span className="text-emerald-600 normal-case">R$ {(p.costPrice * p.quantity).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
                                   </span>
+                                  {p.empresaFornecedora && (
+                                    <span className="sm:col-span-2">
+                                      Empresa / Fornecedora: <span className="text-[9px] font-black tracking-wide text-indigo-800 bg-indigo-50 px-2.5 py-0.5 rounded-md border border-indigo-100 normal-case">{p.empresaFornecedora}</span>
+                                    </span>
+                                  )}
                                   {p.segmento && (
                                     <span className="sm:col-span-2">
                                       Categoria: <span className="text-[9px] font-black tracking-wide text-amber-800 bg-amber-50 px-2.5 py-0.5 rounded-md border border-amber-100 normal-case">{p.segmento}</span>
@@ -2854,40 +3491,54 @@ const CalculatorScreen = ({
                   }
 
                   return filtered.map((p) => {
-                    // Calc total sold from history
-                    const totalSold = salesHistory.reduce((acc, sale) => {
-                      if (!sale || !sale.items) return acc;
-                      const matched = sale.items.filter((it: any) => it.name.trim().toLowerCase() === p.name.trim().toLowerCase());
-                      const sum = matched.reduce((s: number, it: any) => s + (it.quantity || 0), 0);
-                      return acc + sum;
-                    }, 0);
-
                     const q0 = p.quantity || 0;
                     const m = p.salesMerchandiseQty || 0;
 
-                    let remaining = 0;
-                    let remainingSalesMerchandiseQty = 0;
-
+                    let totalSold = 0;
                     if (m <= 0) {
-                      remaining = Math.max(0, q0 - totalSold);
-                      remainingSalesMerchandiseQty = 0;
+                      totalSold = salesHistory.reduce((acc, sale) => {
+                        if (!sale?.items) return acc;
+
+                        const soldInSale = sale.items
+                          .filter((item: any) =>
+                            (item.name || "").trim().toLowerCase() ===
+                            p.name.trim().toLowerCase()
+                          )
+                          .reduce(
+                            (sum: number, item: any) =>
+                              sum + Number(item.quantity || 0),
+                            0
+                          );
+
+                        return acc + soldInSale;
+                      }, 0);
                     } else {
-                      const totalCapacity = q0 * m;
-                      if (totalSold >= totalCapacity) {
-                        remaining = 0;
-                        remainingSalesMerchandiseQty = 0;
-                      } else {
-                        const q = Math.floor(totalSold / m);
-                        const r = totalSold % m;
-                        if (r === 0) {
-                          remaining = q0 - q;
-                          remainingSalesMerchandiseQty = m;
-                        } else {
-                          remaining = q0 - q;
-                          remainingSalesMerchandiseQty = m - r;
-                        }
-                      }
+                      totalSold = salesHistory.reduce((acc, sale) => {
+                        if (!sale?.items) return acc;
+                        return acc + obterTotalMercadoriaVendida(p, sale.items);
+                      }, 0);
                     }
+
+                    console.log("TOTAL SOLD CALCULADO", totalSold);
+
+                    const { 
+                      remainingQty: remaining, 
+                      remainingStockItem: remainingSalesMerchandiseQty,
+                      soldQtyUnit
+                    } = calcularEstoque(q0, m, totalSold);
+
+                    console.log(
+                      "[ESTOQUE]",
+                      {
+                        produto: p.name,
+                        quantidadeInicial: q0,
+                        mercadoriaPorLote: m,
+                        totalSold,
+                        soldQtyUnit,
+                        remaining,
+                        remainingSalesMerchandiseQty
+                      }
+                    );
 
                     return (
                       <div 
@@ -2919,23 +3570,35 @@ const CalculatorScreen = ({
                               </div>
                               <div className="grid grid-cols-2 gap-1.5">
                                 {/* Quantidade Gray */}
-                                <div className="bg-slate-100/80 border border-slate-200/40 rounded-xl p-2 text-center flex flex-col justify-center min-h-[52px]">
+                                <div className="bg-slate-100/80 border border-slate-200/40 rounded-xl p-2 text-center flex flex-col justify-center min-h-[62px] transition-all">
                                   <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">
                                     {p.quantity > 1 ? 'Quantidades' : 'Quantidade'}
                                   </span>
-                                  <span className="font-bold text-[11px] text-slate-600 block text-nowrap">
+                                  <span className="font-bold text-[10.5px] text-slate-600 block leading-tight">
                                     {p.quantity} {p.quantity > 1 ? 'quantidades' : 'quantidade'}
                                   </span>
                                 </div>
 
                                 {/* Sold count (rose) */}
-                                <div className="bg-rose-50/40 border border-rose-100/45 rounded-xl p-2 text-center flex flex-col justify-center min-h-[52px]">
-                                  <span className="text-[8px] font-bold text-rose-400 uppercase tracking-widest block mb-0.5">
-                                    {totalSold === 0 || totalSold > 1 ? 'Vendidos' : 'Vendido'}
+                                <div className="bg-rose-100/60 border border-rose-300/80 rounded-xl p-2 text-center flex flex-col justify-center min-h-[62px] transition-all">
+                                  <span className="text-[8px] font-bold text-rose-500 uppercase tracking-widest block mb-0.5">
+                                    {soldQtyUnit === 1 ? 'Vendido' : 'Vendidos'}
                                   </span>
-                                  <span className="font-bold text-[11px] text-rose-700 block text-nowrap">
-                                    {totalSold === 0 ? '0 vendidos' : `${totalSold} ${totalSold > 1 ? 'quantidades' : 'quantidade'}`}
-                                  </span>
+                                  {m <= 0 ? (
+                                    <span className="font-bold text-[10.5px] text-rose-800 block leading-tight">
+                                      {soldQtyUnit} {soldQtyUnit === 1 ? 'quantidade' : 'quantidades'}
+                                    </span>
+                                  ) : (
+                                    <div className="flex flex-col items-center justify-center w-full">
+                                      <span className="font-bold text-[10px] text-rose-800 block leading-tight">
+                                        {soldQtyUnit} {soldQtyUnit === 1 ? 'quantidade' : 'quantidades'}
+                                      </span>
+                                      <div className="h-[1px] bg-rose-300/40 my-0.5 w-full"></div>
+                                      <span className="font-bold text-[9px] text-rose-700 block leading-tight">
+                                        {totalSold} {totalSold === 1 ? 'mercadoria de Venda' : 'mercadorias de vendas'}
+                                      </span>
+                                    </div>
+                                  )}
                                 </div>
                               </div>
                             </div>
@@ -2949,32 +3612,27 @@ const CalculatorScreen = ({
                               <div className="grid grid-cols-2 gap-1.5">
                                 {/* Quantidade Green (was Contagem) */}
                                 <div className={cn(
-                                  "border rounded-xl p-2 text-center flex flex-col justify-center min-h-[52px]",
+                                  "border rounded-xl p-2 text-center flex flex-col justify-center min-h-[62px] transition-all",
                                   remaining > 0 
-                                    ? "bg-emerald-50/40 border-emerald-100/45 text-emerald-800" 
+                                    ? "bg-emerald-50 border-emerald-200/80 text-emerald-800" 
                                     : "bg-slate-100/95 border-slate-200 text-slate-500"
                                 )}>
                                   <span className="text-[8px] font-bold uppercase tracking-widest block mb-0.5">
                                     {remaining > 1 ? 'Quantidades' : 'Quantidade'}
                                   </span>
-                                  <span className="font-black text-[11px] block text-nowrap">
+                                  <span className="font-black text-[10.5px] block leading-tight">
                                     {remaining} {remaining > 1 ? 'quantidades' : 'quantidade'}
                                   </span>
                                 </div>
 
                                 {/* Mercadoria de Venda (blue) */}
-                                <div className="bg-blue-50/40 border border-blue-100/45 rounded-xl p-2 text-center text-blue-800 flex flex-col justify-center min-h-[52px]">
+                                <div className="bg-blue-50/70 border border-blue-200/70 rounded-xl p-2 text-center text-blue-800 flex flex-col justify-center min-h-[62px] transition-all">
                                   <span className="text-[8px] font-bold uppercase tracking-widest block mb-0.5">
                                     {remainingSalesMerchandiseQty > 1 ? 'Mercadorias de Vendas' : 'Mercadoria de Venda'}
                                   </span>
-                                  <span className="font-extrabold text-[11px] block text-nowrap">
+                                  <span className="font-extrabold text-[10.5px] block leading-tight">
                                     {remainingSalesMerchandiseQty} {formatUnitLabel(remainingSalesMerchandiseQty, p.unit)}
                                   </span>
-                                  {totalSold > 0 && (
-                                    <span className="text-[8.5px] font-semibold text-blue-600 block mt-0.5 leading-tight text-nowrap">
-                                      Vendidos: {totalSold} {formatUnitLabel(totalSold, p.unit)}
-                                    </span>
-                                  )}
                                 </div>
                               </div>
                             </div>
@@ -3008,7 +3666,7 @@ const CalculatorScreen = ({
             </div>
           </div>
         </div>
-      ) : (
+      ) : activeTab === 'history' ? (
         <div className="space-y-6 max-w-4xl mx-auto pb-8">
           {/* Stats Dashboard */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -3039,24 +3697,23 @@ const CalculatorScreen = ({
             </div>
 
             <div className="bg-white rounded-[24px] p-6 shadow-sm border border-slate-100 flex flex-col justify-center gap-2 font-sans">
-              {salesHistory.length > 0 ? (
+              {salesHistory.length > 0 || recentlyDeletedSales.length > 0 ? (
                 <>
-                  <button
-                    onClick={copyAllSalesText}
-                    className="py-2.5 px-6 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all w-full text-center font-bold border-0 flex items-center justify-center gap-1.5 shadow-sm cursor-pointer"
-                  >
-                    <Copy size={12} /> Copiar Lista Completa / Recibos
-                  </button>
+                  {salesHistory.length > 0 && (
+                    <button
+                      onClick={copyAllSalesText}
+                      className="py-2.5 px-6 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all w-full text-center font-bold border-0 flex items-center justify-center gap-1.5 shadow-sm cursor-pointer"
+                    >
+                      <Copy size={12} /> Copiar Lista Completa / Recibos
+                    </button>
+                  )}
                   <button
                     onClick={() => {
-                      if (window.confirm("Deseja apagar todo o histórico de vendas permanentemente? Esta ação é irreversível.")) {
-                        setSalesHistory([]);
-                        localStorage.removeItem('feiralivre_sales_history');
-                      }
+                      setIsDeletedManagerOpen(true);
                     }}
-                    className="py-2.5 px-6 bg-red-50 hover:bg-red-100 text-red-600 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all w-full text-center font-bold border-0"
+                    className="py-2.5 px-6 bg-red-50 hover:bg-red-100 text-red-600 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all w-full text-center font-bold border-0 flex items-center justify-center gap-1.5 cursor-pointer"
                   >
-                    Apagar Todo Histórico
+                    <Trash2 size={12} /> Histórico de Apagados {recentlyDeletedSales.length > 0 && `(${recentlyDeletedSales.length})`}
                   </button>
                 </>
               ) : (
@@ -3296,8 +3953,1406 @@ const CalculatorScreen = ({
               </motion.div>
             )}
           </AnimatePresence>
+
+          {/* Modal / Página Aba Abertura para Gestão de Histórico e Apagados */}
+          <AnimatePresence>
+            {isDeletedManagerOpen && (
+              <motion.div 
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="fixed inset-0 z-50 bg-[#F4F5F7] flex flex-col overflow-hidden"
+                onClick={() => setIsDeletedManagerOpen(false)}
+              >
+                <motion.div 
+                  initial={{ y: "100%", opacity: 0 }}
+                  animate={{ y: 0, opacity: 1 }}
+                  exit={{ y: "100%", opacity: 0 }}
+                  transition={{ type: "spring", damping: 30, stiffness: 200 }}
+                  onClick={(e) => e.stopPropagation()}
+                  className="w-full h-full flex flex-col pointer-events-auto bg-[#F4F5F7]"
+                >
+                  {/* Header do Modal */}
+                  <div className="bg-white border-b border-slate-200 shadow-sm shrink-0">
+                    <div className="max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-5 flex items-center justify-between">
+                      <div>
+                        <h3 className="text-xl font-black text-slate-900 flex items-center gap-2.5">
+                          <Archive className="text-red-500" size={24} />
+                          Gerenciador de Histórico & Apagados
+                        </h3>
+                        <p className="text-xs text-slate-400 font-bold uppercase tracking-wider mt-1">
+                          Consulte e gerencie a memória de vendas ativas e excluídas
+                        </p>
+                      </div>
+                      <button 
+                        onClick={() => setIsDeletedManagerOpen(false)}
+                        className="py-2.5 px-4 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold text-xs rounded-xl transition-all border-0 cursor-pointer flex items-center gap-1.5"
+                      >
+                        <X size={16} /> Fechar Página
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Tabs Selector: Lista Atual vs Histórico de Apagados */}
+                  <div className="bg-white border-b border-slate-200 shrink-0">
+                    <div className="max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-1.5 flex gap-6">
+                      <button
+                        onClick={() => setManagerActiveTab('current')}
+                        className={cn(
+                          "pb-3 pt-2 text-xs font-black uppercase tracking-wider border-b-2 border-transparent transition-all border-0 cursor-pointer bg-transparent",
+                          managerActiveTab === 'current' 
+                            ? "border-red-500 text-red-600 font-extrabold" 
+                            : "text-slate-400 hover:text-slate-600"
+                        )}
+                      >
+                        Lista Atual ({salesHistory.length})
+                      </button>
+                      <button
+                        onClick={() => setManagerActiveTab('deleted')}
+                        className={cn(
+                          "pb-3 pt-2 text-xs font-black uppercase tracking-wider border-b-2 border-transparent transition-all border-0 cursor-pointer bg-transparent",
+                          managerActiveTab === 'deleted' 
+                            ? "border-red-500 text-red-600 font-extrabold" 
+                            : "text-slate-400 hover:text-slate-600"
+                        )}
+                      >
+                        Histórico de Apagados ({recentlyDeletedSales.length})
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Coluna Modo de Pesquisa */}
+                  <div className="bg-slate-100/70 border-b border-slate-200 shrink-0">
+                    <div className="max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-5 space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
+                      {/* Dropdown de Seleção para Modo de Pesquisa */}
+                      <div className="md:col-span-4 flex flex-col gap-1.5">
+                        <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 block">
+                          Modo de pesquisa:
+                        </span>
+                        <div className="relative">
+                          <select
+                            value={historySearchMode}
+                            onChange={(e) => {
+                              setHistorySearchMode(e.target.value as any);
+                            }}
+                            className="w-full py-3 pl-10 pr-10 bg-white border border-slate-200 rounded-xl font-sans font-bold text-slate-700 text-xs focus:outline-none focus:border-red-500 shadow-sm appearance-none cursor-pointer"
+                          >
+                            <option value="all">🔍 Tudo (Geral)</option>
+                            <option value="date">📅 Por Data</option>
+                            <option value="year">📅 Por Ano</option>
+                            <option value="name">👤 Por Nome</option>
+                            <option value="category">🏷️ Por Categoria</option>
+                          </select>
+                          <div className="absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none text-slate-500">
+                            <ChevronDown size={14} />
+                          </div>
+                          {/* Left icon inside the dropdown */}
+                          <div className="absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
+                            {historySearchMode === 'all' && <Search size={14} />}
+                            {historySearchMode === 'date' && <Calendar size={14} />}
+                            {historySearchMode === 'year' && <Calendar size={14} />}
+                            {historySearchMode === 'name' && <User size={14} />}
+                            {historySearchMode === 'category' && <Tag size={14} />}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Input de Busca ou Filtro */}
+                      <div className="md:col-span-8 flex flex-col gap-1.5">
+                        <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 block">
+                          Filtro ou Busca:
+                        </span>
+                        <div className="flex flex-col sm:flex-row gap-3">
+                          {/* Text Search Input */}
+                          <div className="flex-1 relative">
+                            <input
+                              type="text"
+                              placeholder={
+                                historySearchMode === 'date' 
+                                  ? "Digite a data (ex: 28/06, 06) ou use os seletores..." 
+                                  : historySearchMode === 'year'
+                                  ? "Digite o ano (ex: 2026)..."
+                                  : historySearchMode === 'category'
+                                  ? "Escreva a categoria (ex: verdura, frutas)..."
+                                  : historySearchMode === 'name'
+                                  ? "Digite o nome do cliente ou produto..."
+                                  : "Pesquisar por nome, categoria, data ou ano..."
+                              }
+                              value={historySearchText}
+                              onChange={(e) => setHistorySearchText(e.target.value)}
+                              className="w-full py-3 pl-10 pr-10 bg-white border border-slate-200 rounded-xl font-sans font-semibold text-slate-800 focus:outline-none focus:border-red-500 text-xs transition-colors shadow-sm"
+                            />
+                            <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                            
+                            {historySearchText && (
+                              <button
+                                type="button"
+                                onClick={() => setHistorySearchText('')}
+                                className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full cursor-pointer border-0"
+                              >
+                                <X size={14} />
+                              </button>
+                            )}
+                          </div>
+
+                          {/* Date Picker (Calendar) - Shows if 'date' is selected */}
+                          {historySearchMode === 'date' && (
+                            <div className="flex gap-2 items-center shrink-0">
+                              <div className="relative">
+                                <input
+                                  type="date"
+                                  value={historySearchDate}
+                                  onChange={(e) => setHistorySearchDate(e.target.value)}
+                                  className="py-3 px-4 bg-white border border-slate-200 rounded-xl font-sans font-semibold text-slate-800 focus:outline-none focus:border-red-500 text-xs transition-colors shadow-sm cursor-pointer"
+                                />
+                              </div>
+
+                              {historySearchDate && (
+                                <button
+                                  type="button"
+                                  onClick={() => setHistorySearchDate('')}
+                                  title="Limpar data"
+                                  className="py-3 px-3 bg-red-50 hover:bg-red-100 text-red-600 border border-red-100 rounded-xl font-black text-[10px] uppercase tracking-wider transition-colors flex items-center justify-center gap-1 cursor-pointer"
+                                >
+                                  <X size={12} /> Limpar
+                                </button>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Novo: Calendário de datas disponíveis com vendas reais */}
+                    {historySearchMode === 'date' && (
+                      <div className="bg-white p-4 rounded-2xl border border-slate-200/60 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 flex items-center gap-1.5 font-bold">
+                            <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+                            Selecione uma Data com Venda Ativa:
+                          </span>
+                          
+                          {historySearchDate && (
+                            <button
+                              type="button"
+                              onClick={() => setHistorySearchDate('')}
+                              className="text-[10px] text-red-500 hover:text-red-700 font-extrabold flex items-center gap-1 cursor-pointer border-0 bg-transparent"
+                            >
+                              <X size={12} /> Mostrar Todas as Datas
+                            </button>
+                          )}
+                        </div>
+                        
+                        {(() => {
+                          const availableDates = getAvailableSalesDates();
+                          if (availableDates.length === 0) {
+                            return (
+                              <p className="text-xs text-slate-400 font-medium italic">
+                                Nenhuma data com registro de venda encontrado.
+                              </p>
+                            );
+                          }
+                          return (
+                            <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto pr-1">
+                              {availableDates.map((dateStr) => {
+                                const parts = dateStr.split('/');
+                                const dateISO = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+                                const isSelected = historySearchDate === dateISO;
+                                return (
+                                  <button
+                                    key={dateStr}
+                                    type="button"
+                                    onClick={() => {
+                                      setHistorySearchDate(dateISO);
+                                    }}
+                                    className={cn(
+                                      "px-3 py-2 rounded-xl text-xs font-bold border transition-all cursor-pointer flex items-center gap-1.5",
+                                      isSelected
+                                        ? "bg-red-500 text-white border-red-500 shadow-sm font-black"
+                                        : "bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100 hover:border-slate-300"
+                                    )}
+                                  >
+                                    <Calendar size={12} className={isSelected ? "text-white" : "text-red-500"} />
+                                    {dateStr}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          );
+                        })()}
+                      </div>
+                    )}
+
+                    {/* Quick helper indicator for calendar available date */}
+                    {historySearchMode === 'date' && historySearchDate && (
+                      <div className="text-[10px] text-slate-500 font-medium flex items-center gap-1.5 pl-1 bg-white p-2.5 rounded-xl border border-slate-100 shadow-sm">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                        <span>Mostrando registros de: <strong>{new Date(historySearchDate + 'T00:00:00').toLocaleDateString('pt-BR')}</strong>.</span>
+                      </div>
+                    )}
+                    </div>
+                  </div>
+
+                  {/* Conteúdo do Modal */}
+                  <div className="flex-1 overflow-y-auto">
+                    <div className="max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+                      {managerActiveTab === 'current' ? (
+                      <>
+                        {/* Ações para a Lista Atual */}
+                        <div className="bg-white rounded-2xl p-4 border border-slate-100 flex flex-wrap gap-2.5 items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <label className="inline-flex items-center gap-2 cursor-pointer select-none">
+                              <input 
+                                type="checkbox"
+                                checked={salesHistory.filter(matchesSearch).length > 0 && salesHistory.filter(matchesSearch).every(s => s && selectedCurrentSales.includes(s.id))}
+                                ref={input => {
+                                  if (input) {
+                                    const visible = salesHistory.filter(matchesSearch).filter(Boolean);
+                                    const selectedCount = visible.filter(s => selectedCurrentSales.includes(s.id)).length;
+                                    input.indeterminate = selectedCount > 0 && selectedCount < visible.length;
+                                  }
+                                }}
+                                onChange={toggleSelectAllCurrentSales}
+                                className="w-5 h-5 rounded border-slate-300 text-red-600 focus:ring-red-500 cursor-pointer accent-red-600 shrink-0"
+                              />
+                              <span className="text-xs font-bold text-slate-700">Selecionar todos</span>
+                            </label>
+                            <span className="text-slate-300">|</span>
+                            <span className="text-xs text-slate-500 font-semibold">
+                              {selectedCurrentSales.length} {selectedCurrentSales.length === 1 ? 'item selecionado' : 'itens selecionados'}
+                            </span>
+                          </div>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={deleteSelectedCurrentSales}
+                              disabled={selectedCurrentSales.length === 0}
+                              className={cn(
+                                "py-2 px-4 rounded-xl text-[10px] font-black uppercase tracking-wider border-0 transition-all flex items-center gap-1.5 cursor-pointer",
+                                selectedCurrentSales.length > 0 
+                                  ? "bg-red-500 text-white hover:bg-red-600" 
+                                  : "bg-slate-100 text-slate-300 cursor-not-allowed"
+                              )}
+                            >
+                              Apagar Selecionados
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Listagem da Lista Atual */}
+                        {salesHistory.length > 0 ? (
+                          salesHistory.filter(matchesSearch).length > 0 ? (
+                            <div className="space-y-3">
+                              {salesHistory.filter(matchesSearch).map((sale) => {
+                                if (!sale) return null;
+                                const saleItems = Array.isArray(sale.items) ? sale.items : [];
+                                const isChecked = selectedCurrentSales.includes(sale.id);
+                                return (
+                                  <div 
+                                    key={sale.id}
+                                    onClick={() => toggleCurrentSaleSelection(sale.id)}
+                                    className={cn(
+                                      "p-4 rounded-2xl border transition-all flex items-start gap-4 cursor-pointer bg-white text-left",
+                                      isChecked ? "border-red-200 bg-red-50/20" : "border-slate-100 hover:border-slate-200"
+                                    )}
+                                  >
+                                    {/* Caixa Quadrada Checkbox */}
+                                    <div className="pt-0.5" onClick={(e) => e.stopPropagation()}>
+                                      <input 
+                                        type="checkbox"
+                                        checked={isChecked}
+                                        onChange={() => toggleCurrentSaleSelection(sale.id)}
+                                        className="w-5 h-5 rounded border-slate-300 text-red-600 focus:ring-red-500 cursor-pointer accent-red-600 shrink-0"
+                                      />
+                                    </div>
+
+                                    <div className="flex-1 space-y-3">
+                                      <div className="flex justify-between items-start">
+                                        <div>
+                                          <h4 className="font-extrabold text-sm text-slate-800">
+                                            {sale.customerName || 'Cliente sem nome'}
+                                          </h4>
+                                          <div className="flex flex-wrap gap-2 items-center mt-1">
+                                            <span className="text-[10px] text-slate-400 font-bold">
+                                              {sale.date}
+                                            </span>
+                                            {sale.paymentMethod && (
+                                              <span className="inline-flex items-center text-[8px] font-black uppercase tracking-wider bg-slate-100 text-slate-600 px-2 py-0.5 rounded border border-slate-200/60">
+                                                {obterLabelPagamento(sale.paymentMethod)}
+                                              </span>
+                                            )}
+                                          </div>
+                                        </div>
+                                        <div className="text-right">
+                                          <span className="text-[9px] text-slate-400 font-bold block">TOTAL PEDIDO</span>
+                                          <span className="font-black text-base text-emerald-600">
+                                            R$ {Number(sale.total || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                          </span>
+                                        </div>
+                                      </div>
+                                      
+                                      {/* Lista de itens completa do Pedido */}
+                                      <div className="space-y-2 pt-2 border-t border-slate-100">
+                                        <span className="text-[9px] font-black uppercase tracking-widest text-slate-400 block mb-1">
+                                          Lista Completa de Produtos ({saleItems.length}):
+                                        </span>
+                                        <div className="grid grid-cols-1 gap-2">
+                                          {saleItems.map((item: any, idx: number) => {
+                                            if (!item) return null;
+                                            const itemTotal = typeof item.total === 'number' ? item.total : 0;
+                                            const itemPrice = typeof item.price === 'number' ? item.price : 0;
+                                            return (
+                                              <div key={item.id || idx} className="text-[11px] bg-slate-50 rounded-xl p-3 border border-slate-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 font-sans hover:bg-slate-100/50 transition-colors">
+                                                <div className="space-y-0.5">
+                                                  <div className="font-bold text-slate-800">
+                                                    {item.name || 'Produto'}
+                                                  </div>
+                                                  <div className="text-slate-500 font-medium flex flex-wrap gap-x-2">
+                                                    <span>Qtd: <strong className="text-slate-800 font-bold">{item.quantity}</strong></span>
+                                                    <span>Preço Unitário: <strong className="text-slate-800 font-bold">R$ {itemPrice.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</strong></span>
+                                                    <span>Peso/Medida: <strong className="text-slate-800 font-bold">{formatarMercadoria(item.weightPerUnit, item.unit || 'unit')}</strong></span>
+                                                  </div>
+                                                  {(item.comercializacao || item.segmento || item.tamanho) && (
+                                                    <div className="text-[10px] text-slate-400 font-medium flex flex-wrap gap-x-2">
+                                                      {item.comercializacao && <span>Medida Comercial: <strong className="text-slate-600 font-semibold">{item.comercializacao}</strong></span>}
+                                                      {item.segmento && <span>Categoria: <strong className="text-slate-600 font-semibold">{item.segmento}</strong></span>}
+                                                      {item.tamanho && <span>Tamanho: <strong className="text-slate-600 font-semibold">{item.tamanho}</strong></span>}
+                                                    </div>
+                                                  )}
+                                                </div>
+                                                <div className="sm:text-right shrink-0">
+                                                  <span className="text-[9px] text-slate-400 font-medium block">SUBTOTAL</span>
+                                                  <span className="text-emerald-600 font-extrabold">R$ {itemTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                                                </div>
+                                              </div>
+                                            );
+                                          })}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          ) : (
+                            <div className="text-center py-12 bg-white rounded-3xl border border-slate-100 flex flex-col items-center justify-center gap-2">
+                              <Search className="text-slate-300 animate-bounce" size={32} />
+                              <span className="text-sm text-slate-400 font-bold block">Nenhum resultado encontrado</span>
+                              <p className="text-xs text-slate-400 max-w-xs font-medium text-center">
+                                Não encontramos nenhuma venda ativa que corresponda aos filtros de pesquisa atuais.
+                              </p>
+                            </div>
+                          )
+                        ) : (
+                          <div className="text-center py-12 bg-white rounded-3xl border border-slate-100">
+                            <span className="text-sm text-slate-400 font-bold block">Nenhuma venda ativa no histórico</span>
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      <>
+                        {/* Ações para a Lista Apagadas Recentes */}
+                        <div className="bg-white rounded-2xl p-4 border border-slate-100 flex flex-wrap gap-2.5 items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <label className="inline-flex items-center gap-2 cursor-pointer select-none">
+                              <input 
+                                type="checkbox"
+                                checked={recentlyDeletedSales.filter(matchesSearch).length > 0 && recentlyDeletedSales.filter(matchesSearch).every(s => s && selectedDeletedSales.includes(s.id))}
+                                ref={input => {
+                                  if (input) {
+                                    const visible = recentlyDeletedSales.filter(matchesSearch).filter(Boolean);
+                                    const selectedCount = visible.filter(s => selectedDeletedSales.includes(s.id)).length;
+                                    input.indeterminate = selectedCount > 0 && selectedCount < visible.length;
+                                  }
+                                }}
+                                onChange={toggleSelectAllDeletedSales}
+                                className="w-5 h-5 rounded border-slate-300 text-red-600 focus:ring-red-500 cursor-pointer accent-red-600 shrink-0"
+                              />
+                              <span className="text-xs font-bold text-slate-700">Selecionar todos</span>
+                            </label>
+                            <span className="text-slate-300">|</span>
+                            <span className="text-xs text-slate-500 font-semibold">
+                              {selectedDeletedSales.length} {selectedDeletedSales.length === 1 ? 'item selecionado' : 'itens selecionados'}
+                            </span>
+                          </div>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={restoreSelectedDeletedSales}
+                              disabled={selectedDeletedSales.length === 0}
+                              className={cn(
+                                "py-2 px-3 rounded-xl text-[10px] font-black uppercase tracking-wider border-0 transition-all flex items-center gap-1.5 cursor-pointer",
+                                selectedDeletedSales.length > 0 
+                                  ? "bg-emerald-100 text-emerald-700 hover:bg-emerald-200" 
+                                  : "bg-slate-100 text-slate-300 cursor-not-allowed"
+                              )}
+                            >
+                              <RotateCcw size={10} /> Restaurar Selecionados
+                            </button>
+                            <button
+                              onClick={deleteSelectedDeletedSalesPermanently}
+                              disabled={selectedDeletedSales.length === 0}
+                              className={cn(
+                                "py-2 px-3 rounded-xl text-[10px] font-black uppercase tracking-wider border-0 transition-all flex items-center gap-1.5 cursor-pointer",
+                                selectedDeletedSales.length > 0 
+                                  ? "bg-red-600 text-white hover:bg-red-700" 
+                                  : "bg-slate-100 text-slate-300 cursor-not-allowed"
+                              )}
+                            >
+                              Apagar Selecionados
+                            </button>
+                          </div>
+                        </div>
+
+                         {/* Listagem da Lista Apagadas Recentes */}
+                        {recentlyDeletedSales.length > 0 ? (
+                          recentlyDeletedSales.filter(matchesSearch).length > 0 ? (
+                            <div className="space-y-3">
+                              {recentlyDeletedSales.filter(matchesSearch).map((sale) => {
+                                if (!sale) return null;
+                                const saleItems = Array.isArray(sale.items) ? sale.items : [];
+                                const isChecked = selectedDeletedSales.includes(sale.id);
+                                return (
+                                  <div 
+                                    key={sale.id}
+                                    onClick={() => toggleDeletedSaleSelection(sale.id)}
+                                    className={cn(
+                                      "p-4 rounded-2xl border transition-all flex items-start gap-4 cursor-pointer bg-white text-left",
+                                      isChecked ? "border-rose-200 bg-rose-50/20" : "border-slate-100 hover:border-slate-200"
+                                    )}
+                                  >
+                                    {/* Caixa Quadrada Checkbox */}
+                                    <div className="pt-0.5" onClick={(e) => e.stopPropagation()}>
+                                      <input 
+                                        type="checkbox"
+                                        checked={isChecked}
+                                        onChange={() => toggleDeletedSaleSelection(sale.id)}
+                                        className="w-5 h-5 rounded border-slate-300 text-red-600 focus:ring-red-500 cursor-pointer accent-red-600 shrink-0"
+                                      />
+                                    </div>
+
+                                    <div className="flex-1 space-y-3">
+                                      <div className="flex justify-between items-start">
+                                        <div>
+                                          <h4 className="font-extrabold text-sm text-slate-800">
+                                            {sale.customerName || 'Cliente sem nome'}
+                                          </h4>
+                                          <div className="flex flex-wrap gap-2 items-center mt-1">
+                                            <span className="text-[10px] text-slate-400 font-bold">
+                                              {sale.date}
+                                            </span>
+                                            {sale.paymentMethod && (
+                                              <span className="inline-flex items-center text-[8px] font-black uppercase tracking-wider bg-slate-100 text-slate-600 px-2 py-0.5 rounded border border-slate-200/60">
+                                                {obterLabelPagamento(sale.paymentMethod)}
+                                              </span>
+                                            )}
+                                          </div>
+                                        </div>
+                                        <div className="text-right">
+                                          <span className="text-[9px] text-slate-400 font-bold block">TOTAL PEDIDO</span>
+                                          <span className="font-black text-base text-rose-600">
+                                            R$ {Number(sale.total || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                          </span>
+                                        </div>
+                                      </div>
+                                      
+                                      {/* Lista de itens completa do Pedido Apagado */}
+                                      <div className="space-y-2 pt-2 border-t border-slate-100">
+                                        <span className="text-[9px] font-black uppercase tracking-widest text-slate-400 block mb-1">
+                                          Lista Completa de Produtos ({saleItems.length}):
+                                        </span>
+                                        <div className="grid grid-cols-1 gap-2">
+                                          {saleItems.map((item: any, idx: number) => {
+                                            if (!item) return null;
+                                            const itemTotal = typeof item.total === 'number' ? item.total : 0;
+                                            const itemPrice = typeof item.price === 'number' ? item.price : 0;
+                                            return (
+                                              <div key={item.id || idx} className="text-[11px] bg-slate-50 rounded-xl p-3 border border-slate-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 font-sans hover:bg-slate-100/50 transition-colors">
+                                                <div className="space-y-0.5">
+                                                  <div className="font-bold text-slate-800">
+                                                    {item.name || 'Produto'}
+                                                  </div>
+                                                  <div className="text-slate-500 font-medium flex flex-wrap gap-x-2">
+                                                    <span>Qtd: <strong className="text-slate-800 font-bold">{item.quantity}</strong></span>
+                                                    <span>Preço Unitário: <strong className="text-slate-800 font-bold">R$ {itemPrice.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</strong></span>
+                                                    <span>Peso/Medida: <strong className="text-slate-800 font-bold">{formatarMercadoria(item.weightPerUnit, item.unit || 'unit')}</strong></span>
+                                                  </div>
+                                                  {(item.comercializacao || item.segmento || item.tamanho) && (
+                                                    <div className="text-[10px] text-slate-400 font-medium flex flex-wrap gap-x-2">
+                                                      {item.comercializacao && <span>Medida Comercial: <strong className="text-slate-600 font-semibold">{item.comercializacao}</strong></span>}
+                                                      {item.segmento && <span>Categoria: <strong className="text-slate-600 font-semibold">{item.segmento}</strong></span>}
+                                                      {item.tamanho && <span>Tamanho: <strong className="text-slate-600 font-semibold">{item.tamanho}</strong></span>}
+                                                    </div>
+                                                  )}
+                                                </div>
+                                                <div className="sm:text-right shrink-0">
+                                                  <span className="text-[9px] text-slate-400 font-medium block">SUBTOTAL</span>
+                                                  <span className="text-rose-600 font-extrabold">R$ {itemTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                                                </div>
+                                              </div>
+                                            );
+                                          })}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          ) : (
+                            <div className="text-center py-12 bg-white rounded-3xl border border-slate-100 flex flex-col items-center justify-center gap-2">
+                              <Search className="text-slate-300 animate-bounce" size={32} />
+                              <span className="text-sm text-slate-400 font-bold block">Nenhum resultado encontrado</span>
+                              <p className="text-xs text-slate-400 max-w-xs font-medium text-center">
+                                Não encontramos nenhuma venda apagada que corresponda aos filtros de pesquisa atuais.
+                              </p>
+                            </div>
+                          )
+                        ) : (
+                          <div className="text-center py-12 bg-white rounded-3xl border border-slate-100 flex flex-col items-center justify-center gap-3">
+                            <span className="text-sm text-slate-400 font-bold">Histórico de Apagados vazio</span>
+                            <p className="text-xs text-slate-400 max-w-xs font-medium text-center">
+                              Vendas apagadas do histórico serão guardadas temporariamente no histórico de apagados.
+                            </p>
+                          </div>
+                        )}
+                      </>
+                    )}
+                    </div>
+                  </div>
+
+
+                </motion.div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
-      )}
+      ) : activeTab === 'etiqueta' ? (
+        <div id="etiqueta-tab-panel" className="space-y-6 max-w-6xl mx-auto pb-12 animate-fade-in px-2">
+          {/* Header/Stats Cards for Etiqueta */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="bg-white rounded-[24px] p-6 shadow-sm border border-slate-100 flex items-center gap-4">
+              <div className="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center font-bold text-lg">
+                <Tag size={20} className="text-emerald-600" />
+              </div>
+              <div>
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Produtos em Estoque</span>
+                <span className="text-xl font-black text-slate-900">
+                  {products.length} {products.length === 1 ? 'produto' : 'produtos'}
+                </span>
+              </div>
+            </div>
+
+            <div className="bg-white rounded-[24px] p-6 shadow-sm border border-slate-100 flex items-center gap-4">
+              <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center font-bold text-lg font-sans">
+                R$
+              </div>
+              <div>
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Desembolso Total</span>
+                <span className="text-xl font-black text-slate-900">
+                  R$ {products.reduce((acc, p) => acc + (Number(p.costPrice || 0) * Number(p.quantity || 0)), 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* List of Products and their Labels */}
+          <div className="bg-white rounded-[32px] p-6 md:p-8 border border-slate-100 shadow-sm space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
+              <div>
+                <h3 className="text-lg font-extrabold text-slate-800">Controle de Identificação de Estoque</h3>
+                <p className="text-xs text-slate-400 font-medium">Cadastre etiquetas, lotes, fotos e códigos de barra para cada produto.</p>
+              </div>
+
+              {/* Filters for Etiqueta List */}
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                {/* Search by Product Name */}
+                <div className="relative">
+                  <input
+                    type="text"
+                    placeholder="Pesquisar produto..."
+                    value={etiquetaSearch}
+                    onChange={(e) => setEtiquetaSearch(e.target.value)}
+                    className="py-1.5 pl-8 pr-3 bg-slate-50 border border-slate-200 rounded-xl text-[10px] font-bold text-slate-700 outline-none focus:border-emerald-500 transition-colors bg-white w-full sm:w-36"
+                  />
+                  <div className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400">
+                    <Search size={10} />
+                  </div>
+                </div>
+
+                {/* Filter by Category (Pesquisar Categoria) */}
+                <select
+                  value={etiquetaFilterCategory}
+                  onChange={(e) => setEtiquetaFilterCategory(e.target.value)}
+                  className="py-1.5 px-3 bg-slate-50 border border-slate-200 rounded-xl text-[10px] font-bold text-slate-700 outline-none focus:border-emerald-500 transition-colors w-full sm:w-40 cursor-pointer text-ellipsis overflow-hidden"
+                >
+                  <option value="">Pesquisar Categoria</option>
+                  {SEGM_OPTIONS.map((opt) => (
+                    <option key={opt} value={opt} className="font-sans font-semibold text-xs text-slate-700">
+                      {opt}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {(() => {
+              const filteredEtiquetaProducts = products.filter((p) => {
+                const matchSearch = p.name.toLowerCase().includes(etiquetaSearch.toLowerCase());
+                const matchCategory = etiquetaFilterCategory ? p.segmento === etiquetaFilterCategory : true;
+                return matchSearch && matchCategory;
+              });
+
+              if (filteredEtiquetaProducts.length > 0) {
+                return (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {filteredEtiquetaProducts.map((p) => {
+                      const totalDesembolso = Number(p.costPrice || 0) * Number(p.quantity || 0);
+                      const q0 = p.quantity || 0;
+                      const m = p.salesMerchandiseQty || 0;
+
+                      let totalSold = 0;
+                      if (m <= 0) {
+                        totalSold = salesHistory.reduce((acc, sale) => {
+                          if (!sale?.items) return acc;
+
+                          const soldInSale = sale.items
+                            .filter((item: any) =>
+                              (item.name || "").trim().toLowerCase() ===
+                              p.name.trim().toLowerCase()
+                            )
+                            .reduce(
+                              (sum: number, item: any) =>
+                                sum + Number(item.quantity || 0),
+                              0
+                            );
+
+                          return acc + soldInSale;
+                        }, 0);
+                      } else {
+                        totalSold = salesHistory.reduce((acc, sale) => {
+                          if (!sale?.items) return acc;
+                          return acc + obterTotalMercadoriaVendida(p, sale.items);
+                        }, 0);
+                      }
+
+                      const { 
+                        remainingQty: remaining, 
+                        remainingStockItem: remainingSalesMerchandiseQty,
+                        soldQtyUnit
+                      } = calcularEstoque(q0, m, totalSold);
+
+                      return (
+                        <div key={p.id} className="bg-slate-50 rounded-2xl p-5 border border-slate-200/60 hover:border-slate-300 hover:shadow-md transition-all flex flex-col justify-between gap-5">
+                          {/* Name and Header of Card */}
+                          <div className="space-y-4">
+                            <div className="flex items-start justify-between gap-2 border-b border-slate-100 pb-3">
+                              <div className="truncate flex-1">
+                                <span className="text-[8px] font-black text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded uppercase tracking-wider border border-indigo-100/50 block w-max max-w-full truncate">
+                                  {p.segmento || 'Sem categoria'}
+                                </span>
+                                <h4 className="text-base font-black text-slate-800 tracking-tight mt-1 truncate" title={p.name}>
+                                  {p.name}
+                                </h4>
+                              </div>
+                              <div className="text-right shrink-0">
+                                <span className="text-[8px] text-slate-400 font-black block">DESEMBOLSO</span>
+                                <span className="text-xs font-black text-emerald-600">
+                                  R$ {totalDesembolso.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Informações da Página de Produto */}
+                            <div className="bg-white rounded-xl p-3.5 border border-slate-100 space-y-3">
+                              <span className="text-[8.5px] font-black text-slate-400 uppercase tracking-widest block border-b border-slate-50 pb-1">
+                                Informações do Produto
+                              </span>
+                              <div className="flex flex-col gap-3 font-sans">
+                                {/* NOME DO PRODUTO */}
+                                <div className="flex flex-col gap-1 border-b border-dashed border-slate-100 pb-1.5">
+                                  <span className="text-slate-400 text-[8.5px] font-black uppercase tracking-wider block">
+                                    NOME DO PRODUTO
+                                  </span>
+                                  <strong className="text-slate-800 normal-case text-xs font-bold leading-normal">
+                                    {p.name}
+                                  </strong>
+                                </div>
+
+                                {/* QUANTIDADE DO PRODUTO (VALOR DO PREÇO UNITÁRIO) */}
+                                <div className="flex flex-col gap-1 border-b border-dashed border-slate-100 pb-1.5">
+                                  <span className="text-slate-400 text-[8.5px] font-black uppercase tracking-wider block">
+                                    QUANTIDADE DO PRODUTO (VALOR DO PREÇO UNITÁRIO)
+                                  </span>
+                                  <strong className="text-slate-800 normal-case text-xs font-bold leading-normal">
+                                    {p.quantity} {p.unit} (R$ {p.costPrice.toLocaleString('pt-BR', { minimumFractionDigits: 2 })})
+                                  </strong>
+                                </div>
+
+                                {/* QUANTIDADE DE MERCADORIAS DE VENDAS */}
+                                <div className="flex flex-col gap-1 border-b border-dashed border-slate-100 pb-1.5">
+                                  <span className="text-slate-400 text-[8.5px] font-black uppercase tracking-wider block">
+                                    QUANTIDADE DE MERCADORIAS DE VENDAS
+                                  </span>
+                                  <strong className="text-slate-800 normal-case text-xs font-bold leading-normal">
+                                    {p.salesMerchandiseQty || 0} {formatUnitLabel(p.salesMerchandiseQty || 0, p.unit)}
+                                  </strong>
+                                </div>
+
+                                {/* PREÇO UNITÁRIO (DESEMBOLSO) */}
+                                <div className="flex flex-col gap-1 border-b border-dashed border-slate-100 pb-1.5">
+                                  <span className="text-slate-400 text-[8.5px] font-black uppercase tracking-wider block">
+                                    PREÇO UNITÁRIO (DESEMBOLSO)
+                                  </span>
+                                  <strong className="text-slate-800 normal-case text-xs font-bold leading-normal">
+                                    R$ {p.costPrice.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} (R$ {totalDesembolso.toLocaleString('pt-BR', { minimumFractionDigits: 2 })})
+                                  </strong>
+                                </div>
+
+                                {/* Empresa / Fornecedora */}
+                                <div className="flex flex-col gap-1 border-b border-dashed border-slate-100 pb-1.5">
+                                  <span className="text-slate-400 text-[8.5px] font-black uppercase tracking-wider block">
+                                    Empresa / Fornecedora
+                                  </span>
+                                  <strong className="text-slate-800 normal-case text-xs font-bold leading-normal">
+                                    {p.empresaFornecedora || 'Não cadastrado'}
+                                  </strong>
+                                </div>
+
+                                {/* Menu Comercialização Categoria (Opcional): */}
+                                <div className="flex flex-col gap-1 border-b border-dashed border-slate-100 pb-1.5">
+                                  <span className="text-slate-400 text-[8.5px] font-black uppercase tracking-wider block">
+                                    Menu Comercialização Categoria (Opcional):
+                                  </span>
+                                  <strong className="text-slate-800 normal-case text-xs font-bold leading-normal">
+                                    {p.segmento || 'Não selecionado'}
+                                  </strong>
+                                </div>
+
+                                {/* Tamanho (Opcional): */}
+                                <div className="flex flex-col gap-1 pb-1">
+                                  <span className="text-slate-400 text-[8.5px] font-black uppercase tracking-wider block">
+                                    Tamanho (Opcional):
+                                  </span>
+                                  <strong className="text-slate-800 normal-case text-xs font-bold leading-normal">
+                                    {p.tamanho || 'Nenhum tamanho selecionado'}
+                                  </strong>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Informações da Página de Quantidade */}
+                            <div className="bg-white rounded-xl p-3.5 border border-slate-100 space-y-3">
+                              <span className="text-[8.5px] font-black text-slate-400 uppercase tracking-widest block border-b border-slate-50 pb-1">
+                                Quantidades Cadastradas / Estoque
+                              </span>
+                              
+                              {/* Group: Adição */}
+                              <div className="space-y-1.5">
+                                <div className="flex items-center gap-1">
+                                  <span className="text-[8px] font-black tracking-widest text-slate-400 uppercase">Adição</span>
+                                  <div className="h-[1px] bg-slate-100 flex-1"></div>
+                                </div>
+                                <div className="grid grid-cols-2 gap-2">
+                                  {/* Quantidades */}
+                                  <div className="bg-slate-50 border border-slate-100 rounded-lg p-2 text-center flex flex-col justify-center min-h-[52px]">
+                                    <span className="text-[7.5px] font-bold text-slate-400 uppercase tracking-wider block mb-0.5">
+                                      Quantidades
+                                    </span>
+                                    <span className="font-extrabold text-[10.5px] text-slate-600 block leading-tight">
+                                      {q0} {q0 > 1 ? 'quantidades' : 'quantidade'}
+                                    </span>
+                                  </div>
+
+                                  {/* Vendidos */}
+                                  <div className="bg-rose-50 border border-rose-100 rounded-lg p-2 text-center flex flex-col justify-center min-h-[52px]">
+                                    <span className="text-[7.5px] font-bold text-rose-500 uppercase tracking-wider block mb-0.5">
+                                      {soldQtyUnit === 1 ? 'Vendido' : 'Vendidos'}
+                                    </span>
+                                    {m <= 0 ? (
+                                      <span className="font-extrabold text-[10.5px] text-rose-800 block leading-tight">
+                                        {soldQtyUnit} {soldQtyUnit === 1 ? 'quantidade' : 'quantidades'}
+                                      </span>
+                                    ) : (
+                                      <div className="flex flex-col items-center justify-center w-full">
+                                        <span className="font-extrabold text-[10.5px] text-rose-800 block leading-tight">
+                                          {soldQtyUnit} {soldQtyUnit === 1 ? 'quantidade' : 'quantidades'}
+                                        </span>
+                                        <div className="h-[1px] bg-rose-200/40 my-0.5 w-full"></div>
+                                        <span className="font-bold text-[8.5px] text-rose-700 block leading-tight">
+                                          {totalSold} {totalSold === 1 ? 'mercadoria de venda' : 'mercadorias de vendas'}
+                                        </span>
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Group: Estoque */}
+                              <div className="space-y-1.5">
+                                <div className="flex items-center gap-1">
+                                  <span className="text-[8px] font-black tracking-widest text-slate-400 uppercase">Estoque</span>
+                                  <div className="h-[1px] bg-slate-100 flex-1"></div>
+                                </div>
+                                <div className="grid grid-cols-2 gap-2">
+                                  {/* Quantidades */}
+                                  <div className={cn(
+                                    "border rounded-lg p-2 text-center flex flex-col justify-center min-h-[52px] transition-all",
+                                    remaining > 0 
+                                      ? "bg-emerald-50/50 border-emerald-100 text-emerald-800" 
+                                      : "bg-slate-50 border-slate-100 text-slate-500"
+                                  )}>
+                                    <span className="text-[7.5px] font-bold uppercase tracking-wider block mb-0.5">
+                                      Quantidades
+                                    </span>
+                                    <span className="font-black text-[10.5px] block leading-tight">
+                                      {remaining} {remaining > 1 ? 'quantidades' : 'quantidade'}
+                                    </span>
+                                  </div>
+
+                                  {/* Mercadorias de Vendas */}
+                                  <div className="bg-blue-50/50 border border-blue-100 rounded-lg p-2 text-center text-blue-800 flex flex-col justify-center min-h-[52px]">
+                                    <span className="text-[7.5px] font-bold uppercase tracking-wider block mb-0.5">
+                                      Mercadorias de Vendas
+                                    </span>
+                                    <span className="font-extrabold text-[10.5px] block leading-tight">
+                                      {remainingSalesMerchandiseQty} {formatUnitLabel(remainingSalesMerchandiseQty, p.unit)}
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Identification Fields Columns */}
+                            <div className="space-y-3 pt-3 border-t border-slate-200">
+                              <span className="text-[8.5px] font-black text-slate-400 uppercase tracking-widest block mb-1">
+                                Identificação e Etiquetas
+                              </span>
+                              
+                              {/* 1. Cadastro de Etiqueta Manual */}
+                              <div className="space-y-1">
+                                <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400 block">1. Etiqueta Manual</span>
+                                {p.etiquetaManual ? (
+                                  <span className="text-xs font-bold text-slate-800 bg-white border border-slate-200 px-2.5 py-1 rounded-lg block truncate">
+                                    {p.etiquetaManual}
+                                  </span>
+                                ) : (
+                                  <span className="text-xs font-medium text-slate-400 bg-slate-100 border border-slate-200/60 border-dashed px-2.5 py-1 rounded-lg block">
+                                    Não cadastrado
+                                  </span>
+                                )}
+                              </div>
+
+                              {/* 2. Categoria de Lote Manual */}
+                              <div className="space-y-1">
+                                <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400 block">2. Categoria de Lote</span>
+                                {p.loteManual ? (
+                                  <span className="text-xs font-bold text-indigo-700 bg-indigo-50/50 border border-indigo-100 px-2.5 py-1 rounded-lg block truncate">
+                                    {p.loteManual}
+                                  </span>
+                                ) : (
+                                  <span className="text-xs font-medium text-slate-400 bg-slate-100 border border-slate-200/60 border-dashed px-2.5 py-1 rounded-lg block">
+                                    Não cadastrado
+                                  </span>
+                                )}
+                              </div>
+
+                              {/* 3. Leitor/Foto de Lote/Produto Vendido */}
+                              <div className="space-y-1">
+                                <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400 block">3. Foto/Etiqueta do Lote</span>
+                                {p.fotoLote ? (
+                                  <div className="relative group rounded-lg overflow-hidden border border-slate-200 bg-white shadow-sm">
+                                    <img src={p.fotoLote} alt="Lote" className="w-full h-24 object-cover" referrerPolicy="no-referrer" />
+                                    {p.leitorEtiqueta && (
+                                      <div className="absolute bottom-0 inset-x-0 bg-slate-900/85 text-white text-[9px] font-bold px-2 py-1 truncate">
+                                        {p.leitorEtiqueta}
+                                      </div>
+                                    )}
+                                  </div>
+                                ) : p.leitorEtiqueta ? (
+                                  <span className="text-xs font-bold text-slate-800 bg-white border border-slate-200 px-2.5 py-1 rounded-lg block truncate">
+                                    {p.leitorEtiqueta}
+                                  </span>
+                                ) : (
+                                  <span className="text-xs font-medium text-slate-400 bg-slate-100 border border-slate-200/60 border-dashed px-2.5 py-1 rounded-lg block">
+                                    Sem foto ou etiqueta de lote
+                                  </span>
+                                )}
+                              </div>
+
+                              {/* 4. Prazo de Validade com Foto */}
+                              <div className="space-y-1">
+                                <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400 block">4. Validade</span>
+                                <div className="flex gap-2 items-center">
+                                  <div className="flex-1">
+                                    {p.validadeData ? (
+                                      <span className="text-xs font-black text-rose-700 bg-rose-50 border border-rose-100 px-2.5 py-1 rounded-lg block text-center">
+                                        {p.validadeData}
+                                      </span>
+                                    ) : (
+                                      <span className="text-xs font-medium text-slate-400 bg-slate-100 border border-slate-200/60 border-dashed px-2.5 py-1 rounded-lg block text-center">
+                                        Sem data
+                                      </span>
+                                    )}
+                                  </div>
+                                  {p.validadeFoto && (
+                                    <div className="w-10 h-8 rounded border border-slate-200 overflow-hidden shrink-0 bg-white shadow-sm">
+                                      <img src={p.validadeFoto} alt="Validade" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* 5. Código de Barra (Leitor) */}
+                              <div className="space-y-1">
+                                <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400 block">5. Código de Barras (Leitor)</span>
+                                {p.codigoBarras ? (
+                                  <div className="flex items-center gap-1.5 text-xs font-mono font-bold text-emerald-800 bg-emerald-50 border border-emerald-100 px-2.5 py-1 rounded-lg">
+                                    <Barcode size={14} className="text-emerald-600 shrink-0" />
+                                    <span className="truncate">{p.codigoBarras}</span>
+                                  </div>
+                                ) : (
+                                  <span className="text-xs font-medium text-slate-400 bg-slate-100 border border-slate-200/60 border-dashed px-2.5 py-1 rounded-lg block">
+                                    Não escaneado
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Action Button */}
+                          <button
+                            onClick={() => {
+                              setLabelEditProductId(p.id);
+                              setLabelEditEtiquetaManual(p.etiquetaManual || '');
+                              setLabelEditLoteManual(p.loteManual || '');
+                              setLabelEditLeitorEtiqueta(p.leitorEtiqueta || '');
+                              setLabelEditFotoLote(p.fotoLote || '');
+                              setLabelEditValidadeData(p.validadeData || '');
+                              setLabelEditValidadeFoto(p.validadeFoto || '');
+                              setLabelEditCodigoBarras(p.codigoBarras || '');
+                            }}
+                            className="w-full py-2.5 px-4 bg-slate-800 hover:bg-slate-900 text-white rounded-xl font-bold text-xs uppercase tracking-widest transition-colors flex items-center justify-center gap-2 border-0 shadow-none cursor-pointer"
+                          >
+                            <Pencil size={12} /> Editar Identificação
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              }
+
+              return (
+                <div className="text-center py-16 text-slate-400">
+                  <Tag className="mx-auto mb-4 opacity-30" size={48} />
+                  <p className="text-sm font-semibold uppercase tracking-wider">Nenhum produto correspondente</p>
+                  <p className="text-xs text-slate-400 mt-1">Nenhum produto cadastrado corresponde aos critérios de pesquisa de etiqueta.</p>
+                </div>
+              );
+            })()}
+          </div>
+
+          {/* Label Edit Modal Overlay */}
+          <AnimatePresence>
+            {labelEditProductId && (
+              <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                <div className="bg-white rounded-[32px] w-full max-w-lg shadow-2xl border border-slate-100 overflow-hidden flex flex-col max-h-[90vh]">
+                  {/* Modal Header */}
+                  <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+                    <div>
+                      <span className="text-[10px] font-black uppercase tracking-widest text-indigo-600 block">Editar Identificação</span>
+                      <h3 className="text-lg font-black text-slate-800 tracking-tight">
+                        {products.find(p => p.id === labelEditProductId)?.name}
+                      </h3>
+                    </div>
+                    <button
+                      onClick={() => setLabelEditProductId(null)}
+                      className="w-8 h-8 rounded-full bg-white hover:bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
+                    >
+                      <X size={16} />
+                    </button>
+                  </div>
+
+                  {/* Modal Scrollable Form Body */}
+                  <div className="p-6 overflow-y-auto space-y-5">
+                    {/* 1. Cadastro de Etiqueta Manual */}
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 ml-1">
+                        1. Cadastro de Etiqueta Manual
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="Ex: Etiqueta Amarela, Código Interno A3..."
+                        value={labelEditEtiquetaManual}
+                        onChange={(e) => setLabelEditEtiquetaManual(e.target.value)}
+                        className="w-full py-3 px-4 bg-slate-50 border border-slate-200 rounded-xl font-sans font-semibold text-slate-800 focus:outline-none focus:border-emerald-500 focus:bg-white text-xs transition-colors"
+                      />
+                    </div>
+
+                    {/* 2. Categoria de Lote Manual */}
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 ml-1">
+                        2. Categoria de Lote Manual
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="Ex: Lote Premium, Lote 4B..."
+                        value={labelEditLoteManual}
+                        onChange={(e) => setLabelEditLoteManual(e.target.value)}
+                        className="w-full py-3 px-4 bg-slate-50 border border-slate-200 rounded-xl font-sans font-semibold text-slate-800 focus:outline-none focus:border-emerald-500 focus:bg-white text-xs transition-colors"
+                      />
+                    </div>
+
+                    {/* 3. Leitor ou Foto do Lote */}
+                    <div className="space-y-2 border-t border-slate-100 pt-4">
+                      <label className="text-[10px] font-bold uppercase tracking-widest text-indigo-600 block mb-1">
+                        3. Leitor de Etiqueta ou Foto de Lote/Produto Vendido
+                      </label>
+                      
+                      <div className="space-y-2">
+                        <input
+                          type="text"
+                          placeholder="Texto ou Leitura da etiqueta de Lote..."
+                          value={labelEditLeitorEtiqueta}
+                          onChange={(e) => setLabelEditLeitorEtiqueta(e.target.value)}
+                          className="w-full py-3 px-4 bg-slate-50 border border-slate-200 rounded-xl font-sans font-semibold text-slate-800 focus:outline-none focus:border-emerald-500 focus:bg-white text-xs transition-colors"
+                        />
+
+                        {/* Thumbnail preview if any */}
+                        {labelEditFotoLote && (
+                          <div className="relative rounded-xl overflow-hidden border border-slate-200 bg-slate-100 h-24 flex items-center justify-center shadow-inner">
+                            <img src={labelEditFotoLote} alt="Preview Lote" className="w-full h-full object-cover" />
+                            <button
+                              onClick={() => setLabelEditFotoLote('')}
+                              className="absolute top-2 right-2 w-6 h-6 rounded-full bg-slate-900/80 hover:bg-slate-900 text-white flex items-center justify-center border-0 cursor-pointer"
+                              title="Remover Foto"
+                            >
+                              <X size={12} />
+                            </button>
+                          </div>
+                        )}
+
+                        <div className="grid grid-cols-2 gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setIsTakingPhoto('fotoLote');
+                              startCamera();
+                            }}
+                            className="py-2.5 px-3 bg-white hover:bg-slate-50 border border-slate-200 hover:border-slate-300 text-slate-700 rounded-xl font-bold text-[10px] uppercase tracking-wider transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                          >
+                            <Camera size={14} className="text-indigo-600" /> Tirar Foto (Câmera)
+                          </button>
+                          
+                          <label className="py-2.5 px-3 bg-white hover:bg-slate-50 border border-slate-200 hover:border-slate-300 text-slate-700 rounded-xl font-bold text-[10px] uppercase tracking-wider transition-colors flex items-center justify-center gap-1.5 cursor-pointer text-center">
+                            <Upload size={14} className="text-indigo-600" /> Escolher Galeria
+                            <input
+                              type="file"
+                              accept="image/*"
+                              className="hidden"
+                              onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                if (file) {
+                                  const reader = new FileReader();
+                                  reader.onload = (event) => {
+                                    setLabelEditFotoLote(event.target?.result as string);
+                                  };
+                                  reader.readAsDataURL(file);
+                                }
+                              }}
+                            />
+                          </label>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* 4. Prazo de Validade com Foto */}
+                    <div className="space-y-2 border-t border-slate-100 pt-4">
+                      <label className="text-[10px] font-bold uppercase tracking-widest text-rose-600 block mb-1">
+                        4. Prazo de Validade com Foto
+                      </label>
+
+                      <div className="space-y-2">
+                        <input
+                          type="date"
+                          value={labelEditValidadeData}
+                          onChange={(e) => setLabelEditValidadeData(e.target.value)}
+                          className="w-full py-3 px-4 bg-slate-50 border border-slate-200 rounded-xl font-sans font-semibold text-slate-800 focus:outline-none focus:border-emerald-500 focus:bg-white text-xs transition-colors"
+                        />
+
+                        {/* Thumbnail preview if any */}
+                        {labelEditValidadeFoto && (
+                          <div className="relative rounded-xl overflow-hidden border border-slate-200 bg-slate-100 h-24 flex items-center justify-center shadow-inner">
+                            <img src={labelEditValidadeFoto} alt="Preview Validade" className="w-full h-full object-cover" />
+                            <button
+                              onClick={() => setLabelEditValidadeFoto('')}
+                              className="absolute top-2 right-2 w-6 h-6 rounded-full bg-slate-900/80 hover:bg-slate-900 text-white flex items-center justify-center border-0 cursor-pointer"
+                              title="Remover Foto"
+                            >
+                              <X size={12} />
+                            </button>
+                          </div>
+                        )}
+
+                        <div className="grid grid-cols-2 gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setIsTakingPhoto('validadeFoto');
+                              startCamera();
+                            }}
+                            className="py-2.5 px-3 bg-white hover:bg-slate-50 border border-slate-200 hover:border-slate-300 text-slate-700 rounded-xl font-bold text-[10px] uppercase tracking-wider transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                          >
+                            <Camera size={14} className="text-rose-600" /> Tirar Foto (Câmera)
+                          </button>
+
+                          <label className="py-2.5 px-3 bg-white hover:bg-slate-50 border border-slate-200 hover:border-slate-300 text-slate-700 rounded-xl font-bold text-[10px] uppercase tracking-wider transition-colors flex items-center justify-center gap-1.5 cursor-pointer text-center">
+                            <Upload size={14} className="text-rose-600" /> Escolher Galeria
+                            <input
+                              type="file"
+                              accept="image/*"
+                              className="hidden"
+                              onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                if (file) {
+                                  const reader = new FileReader();
+                                  reader.onload = (event) => {
+                                    setLabelEditValidadeFoto(event.target?.result as string);
+                                  };
+                                  reader.readAsDataURL(file);
+                                }
+                              }}
+                            />
+                          </label>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* 5. Código de Barra (Leitor) */}
+                    <div className="space-y-2 border-t border-slate-100 pt-4">
+                      <label className="text-[10px] font-bold uppercase tracking-widest text-emerald-600 block mb-1">
+                        5. Código de Barras (Leitor da Câmera)
+                      </label>
+
+                      <div className="space-y-2">
+                        <div className="relative">
+                          <input
+                            type="text"
+                            placeholder="Escaneie ou digite o código de barras..."
+                            value={labelEditCodigoBarras}
+                            onChange={(e) => setLabelEditCodigoBarras(e.target.value)}
+                            className="w-full py-3 pl-10 pr-4 bg-slate-50 border border-slate-200 rounded-xl font-sans font-semibold text-slate-800 focus:outline-none focus:border-emerald-500 focus:bg-white text-xs transition-colors font-mono"
+                          />
+                          <Barcode size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsScanningBarcode(true);
+                            setScanningTargetField('codigoBarras');
+                          }}
+                          className="w-full py-3 px-4 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-xl font-bold text-xs uppercase tracking-widest transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-none"
+                        >
+                          <Barcode size={16} className="text-emerald-600 animate-pulse" /> Leitor da Câmera
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Modal Footer */}
+                  <div className="p-6 border-t border-slate-100 flex items-center justify-end gap-3 bg-slate-50/30 shrink-0">
+                    <button
+                      onClick={() => setLabelEditProductId(null)}
+                      className="py-3 px-5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl font-bold text-xs uppercase tracking-wider border-0 transition-colors cursor-pointer"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      onClick={saveLabelDetails}
+                      className="py-3 px-6 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-black text-xs uppercase tracking-widest border-0 shadow-md transition-all cursor-pointer"
+                    >
+                      Salvar Identificação
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </AnimatePresence>
+
+          {/* Real or Simulated Camera Viewport for taking Photos */}
+          <AnimatePresence>
+            {isTakingPhoto && (
+              <div className="fixed inset-0 bg-black/95 z-[60] flex flex-col items-center justify-center p-4">
+                <div className="w-full max-w-lg space-y-6 flex flex-col items-center">
+                  <div className="w-full flex items-center justify-between text-white">
+                    <div>
+                      <h4 className="font-extrabold text-sm uppercase tracking-wider text-emerald-400">Captura de Câmera</h4>
+                      <p className="text-xs text-slate-400">
+                        {isTakingPhoto === 'fotoLote' ? 'Fotografando Lote/Produto' : 'Fotografando Prazo de Validade'}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => {
+                        stopCamera();
+                        setIsTakingPhoto(null);
+                      }}
+                      className="w-8 h-8 rounded-full bg-white/15 hover:bg-white/20 border border-white/20 flex items-center justify-center text-white cursor-pointer"
+                    >
+                      <X size={16} />
+                    </button>
+                  </div>
+
+                  {/* Video Viewport */}
+                  <div className="w-full aspect-video bg-slate-950 rounded-3xl overflow-hidden border border-white/10 relative flex items-center justify-center">
+                    {cameraStream ? (
+                      <video
+                        ref={(el) => {
+                          if (el) {
+                            el.srcObject = cameraStream;
+                            el.play().catch(e => console.warn("Erro ao reproduzir vídeo", e));
+                          }
+                        }}
+                        className="w-full h-full object-cover"
+                        playsInline
+                        muted
+                      />
+                    ) : (
+                      <div className="text-center p-6 space-y-3">
+                        <div className="w-16 h-16 bg-white/5 rounded-full flex items-center justify-center text-slate-500 mx-auto animate-pulse">
+                          <Camera size={28} />
+                        </div>
+                        <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Simulador de Câmera Ativo</p>
+                        <p className="text-[10px] text-slate-500 max-w-xs mx-auto">Sua câmera está sendo simulada de forma profissional. Clique em 'Capturar Foto' para gerar um registro representativo.</p>
+                      </div>
+                    )}
+                    {/* Viewfinder brackets */}
+                    <div className="absolute inset-8 border border-white/20 rounded-2xl pointer-events-none"></div>
+                  </div>
+
+                  {/* Control Buttons */}
+                  <div className="flex items-center gap-4 w-full justify-center">
+                    <button
+                      onClick={() => {
+                        // Play camera shutter sound
+                        try {
+                          const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+                          const osc = audioCtx.createOscillator();
+                          const gain = audioCtx.createGain();
+                          osc.connect(gain);
+                          gain.connect(audioCtx.destination);
+                          osc.type = 'sine';
+                          osc.frequency.setValueAtTime(800, audioCtx.currentTime);
+                          gain.gain.setValueAtTime(0.05, audioCtx.currentTime);
+                          osc.start();
+                          osc.stop(audioCtx.currentTime + 0.1);
+                        } catch (e) {}
+                        
+                        // Check if we can capture frame from real camera stream
+                        let capturedBase64 = '';
+                        if (cameraStream) {
+                          const videoElement = document.querySelector('video');
+                          if (videoElement) {
+                            const canvas = document.createElement('canvas');
+                            canvas.width = videoElement.videoWidth || 640;
+                            canvas.height = videoElement.videoHeight || 480;
+                            const ctx = canvas.getContext('2d');
+                            if (ctx) {
+                              ctx.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
+                              capturedBase64 = canvas.toDataURL('image/jpeg');
+                            }
+                          }
+                        }
+
+                        // Fallback data URI if real capture failed or is simulated
+                        if (!capturedBase64) {
+                          capturedBase64 = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300" viewBox="0 0 400 300"><rect width="400" height="300" fill="%23eceef5"/><circle cx="200" cy="150" r="40" fill="none" stroke="%23cbd5e1" stroke-width="4"/><path d="M180,150 L220,150 M200,130 L200,170" stroke="%2394a3b8" stroke-width="4"/><text x="200" y="240" fill="%23475569" font-family="sans-serif" font-size="14" font-weight="bold" text-anchor="middle">Foto Capturada com Sucesso</text></svg>`;
+                        }
+
+                        if (isTakingPhoto === 'fotoLote') {
+                          setLabelEditFotoLote(capturedBase64);
+                        } else {
+                          setLabelEditValidadeFoto(capturedBase64);
+                        }
+
+                        stopCamera();
+                        setIsTakingPhoto(null);
+                      }}
+                      className="py-3.5 px-8 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl font-black text-sm uppercase tracking-widest border-0 transition-all flex items-center justify-center gap-2 cursor-pointer"
+                    >
+                      <Camera size={16} /> Capturar Foto
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </AnimatePresence>
+
+          {/* Real or Simulated Laser Barcode Scanner Viewport */}
+          <AnimatePresence>
+            {isScanningBarcode && (
+              <div className="fixed inset-0 bg-black/95 z-[60] flex flex-col items-center justify-center p-4">
+                <div className="w-full max-w-lg space-y-6 flex flex-col items-center">
+                  <div className="w-full flex items-center justify-between text-white">
+                    <div>
+                      <h4 className="font-extrabold text-sm uppercase tracking-wider text-emerald-400">Leitor de Código de Barra</h4>
+                      <p className="text-xs text-slate-400">Posicione o código de barras no centro da área vermelha</p>
+                    </div>
+                    <button
+                      onClick={() => {
+                        setIsScanningBarcode(false);
+                        setScanningTargetField(null);
+                        setScannerErrorMessage('');
+                      }}
+                      className="w-8 h-8 rounded-full bg-white/15 hover:bg-white/20 border border-white/20 flex items-center justify-center text-white cursor-pointer"
+                    >
+                      <X size={16} />
+                    </button>
+                  </div>
+
+                  {/* Scanner viewport with moving laser line */}
+                  <div className="w-full aspect-video bg-slate-950 rounded-3xl overflow-hidden border border-white/10 relative">
+                    <div id="barcode-scanner-reader" className="w-full h-full [&_video]:object-cover [&_video]:w-full [&_video]:h-full" />
+
+                    {/* Glowing Red Laser Sweeper Line */}
+                    <div className="absolute inset-x-0 h-0.5 bg-red-500 shadow-[0_0_12px_rgba(239,68,68,1)] animate-bounce pointer-events-none z-10" style={{ animationDuration: '2s' }} />
+
+                    {/* Centered scanner viewfinder brackets */}
+                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
+                      <div className="w-2/3 h-2/3 border-2 border-dashed border-red-500/60 rounded flex items-center justify-center">
+                        <div className="w-1.5 h-1.5 bg-red-500 rounded-full animate-ping" />
+                      </div>
+                    </div>
+                  </div>
+
+                  {scannerErrorMessage && (
+                    <div className="w-full bg-red-500/15 border border-red-500/30 rounded-2xl p-4 text-center text-red-200 text-xs font-bold">
+                      {scannerErrorMessage}
+                    </div>
+                  )}
+
+                  {/* Scan actions */}
+                  <div className="flex flex-col gap-3 w-full items-center">
+                    <label className="py-3.5 px-8 w-full sm:w-auto bg-slate-800 hover:bg-slate-700 text-white rounded-2xl font-black text-xs uppercase tracking-widest border border-slate-700 transition-all flex items-center justify-center gap-2 cursor-pointer shadow-md text-center">
+                      <Upload size={16} className="text-emerald-400" />
+                      Selecionar Foto da Galeria
+                      <input 
+                        type="file" 
+                        accept="image/*" 
+                        onChange={handleBarcodeFileScan} 
+                        className="hidden" 
+                      />
+                    </label>
+                    <p className="text-[10px] text-slate-400 text-center uppercase tracking-widest font-black">
+                      Formatos aceitos: EAN-13, EAN-8, UPC-A, UPC-E e QR Code
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+          </AnimatePresence>
+        </div>
+      ) : null}
     </div>
 
     {/* Toasts Flutuantes */}

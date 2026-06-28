@@ -1,7 +1,9 @@
 {
   "name": "Feira Livre Calculadora",
   "description": "Calculadora inteligente para feirantes com suporte a peso, unidades e cálculo de troco.",
-  "requestFramePermissions": [],
+  "requestFramePermissions": [
+    "camera"
+  ],
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
   ]
