@@ -4,3 +4,41 @@
 @theme {
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
 }
+
+/* Media Print Styles for real Bluetooth and Thermal printers (58mm) */
+@media print {
+  /* Hide the entire application react root */
+  body.print-mode-active #root,
+  body.print-mode-active > div:not(.print-only-container) {
+    display: none !important;
+  }
+
+  /* Show only the print-only container */
+  body.print-mode-active .print-only-container {
+    display: block !important;
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 58mm !important; /* Standard receipt width */
+    margin: 0 !important;
+    padding: 4mm !important;
+    background: white !important;
+    color: black !important;
+    font-family: monospace !important;
+    font-size: 10px !important;
+    box-shadow: none !important;
+    border: none !important;
+  }
+
+  /* Ensure page has no browser margin decoration */
+  @page {
+    size: 58mm auto;
+    margin: 0;
+  }
+}
+
+/* Hide print-only container on screen display */
+.print-only-container {
+  display: none !important;
+}
+

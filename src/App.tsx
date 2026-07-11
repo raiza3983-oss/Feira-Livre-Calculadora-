@@ -4,6 +4,7 @@
  */
 
 import CalculatorScreen from './components/CalculatorScreen';
+import { VisionProvider } from './components/VisionProvider';
 
 export default function App() {
   const mockConfig = {
@@ -12,12 +13,14 @@ export default function App() {
   };
 
   return (
-    <main className="min-h-screen bg-slate-50 font-sans">
-      <CalculatorScreen 
-        config={mockConfig} 
-        user={null}
-        onApply={(data) => console.log('Applied:', data)}
-      />
-    </main>
+    <VisionProvider>
+      <main className="min-h-screen bg-slate-50 font-sans">
+        <CalculatorScreen 
+          config={mockConfig} 
+          user={null}
+          onApply={(data) => console.log('Applied:', data)}
+        />
+      </main>
+    </VisionProvider>
   );
 }
