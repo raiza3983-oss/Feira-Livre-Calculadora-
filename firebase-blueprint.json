@@ -22,6 +22,22 @@
         "name": { "type": "string" }
       },
       "required": ["uid", "email", "role"]
+    },
+    "SyncSession": {
+      "title": "Sync Session",
+      "description": "Sales history and inventory sync session keyed by PIN Token",
+      "type": "object",
+      "properties": {
+        "pinToken": { "type": "string" },
+        "feiranteName": { "type": "string" },
+        "feiranteCnpj": { "type": "string" },
+        "products": { "type": "array" },
+        "salesHistory": { "type": "array" },
+        "productsSmartMetadata": { "type": "object" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["pinToken", "feiranteName", "products", "salesHistory"]
     }
   },
   "firestore": {
@@ -32,6 +48,10 @@
     "/users/{userId}": {
       "schema": "UserProfile",
       "description": "User profile information"
+    },
+    "/syncs/{pinToken}": {
+      "schema": "SyncSession",
+      "description": "Synced vendor data buckets"
     }
   }
 }

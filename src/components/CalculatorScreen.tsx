@@ -13,7 +13,7 @@ import {
   Tag, Camera, Barcode, Upload, Image, Receipt, Printer, Download,
   Check, Edit2, Eye, AlertTriangle, RefreshCw, Cpu, Tv
 } from 'lucide-react';
-import { collection, getDocs, limit, query, where } from 'firebase/firestore';
+import { collection, getDocs, limit, query, where, doc, getDoc, setDoc, deleteDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { cn } from '../lib/utils';
 import { handleFirestoreError, OperationType } from '../lib/errorHandler';
@@ -157,6 +157,8 @@ const CalculatorScreen = ({
   const [showProductFormSegmentoDropdown, setShowProductFormSegmentoDropdown] = useState<boolean>(false);
   const [productFormTamanho, setProductFormTamanho] = useState<string>('');
   const [productFormEmpresaFornecedora, setProductFormEmpresaFornecedora] = useState<string>('');
+  const [productFormComercialUnit, setProductFormComercialUnit] = useState<string>('');
+  const [productFormComercialText, setProductFormComercialText] = useState<string>('');
 
   // Filtro de Atividade Comercial na listagem de produtos
   const [productsFilterSegmento, setProductsFilterSegmento] = useState<string>('');
@@ -165,7 +167,7 @@ const CalculatorScreen = ({
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
   // Estados adicionados para Histórico, Busca Rápida e Editar
-  const [activeTab, setActiveTab] = useState<'calculator' | 'products' | 'history' | 'quantity' | 'etiqueta' | 'notafiscal' | 'visualizar_cupom' | 'armazenagem'>('calculator');
+  const [activeTab, setActiveTab] = useState<'calculator' | 'products' | 'history' | 'quantity' | 'etiqueta' | 'notafiscal' | 'visualizar_cupom' | 'armazenagem' | 'sync'>('calculator');
   
   // Estados para Nota Fiscal
   const [nfEmitenteTipo, setNfEmitenteTipo] = useState<'feirante_cpf' | 'empresa_cnpj' | 'feirante_cnpj' | 'comerciante_cpf'>(() => {
@@ -185,6 +187,13 @@ const CalculatorScreen = ({
     return (localStorage.getItem('nfEmitenteDocTipo') as any) || 'CPF';
   });
   const [nfEmitenteDocNumero, setNfEmitenteDocNumero] = useState(() => localStorage.getItem('nfEmitenteDocNumero') || '');
+  const [nfEmitenteCidade, setNfEmitenteCidade] = useState(() => localStorage.getItem('nfEmitenteCidade') || 'São Paulo');
+  const [nfEmitenteEstado, setNfEmitenteEstado] = useState(() => localStorage.getItem('nfEmitenteEstado') || 'SP');
+  const [syncSubTab, setSyncSubTab] = useState<'sync' | 'avaliacao' | 'relatorio'>('sync');
+  const [syncSelectedProductId, setSyncSelectedProductId] = useState<string | null>(null);
+  const [syncSearchProduct, setSyncSearchProduct] = useState('');
+  const [syncSearchPrice, setSyncSearchPrice] = useState('');
+  const [syncSearchDate, setSyncSearchDate] = useState('');
   const [isNfEmitenteEditing, setIsNfEmitenteEditing] = useState<boolean>(false);
 
   const [nfDestinatarioTipo, setNfDestinatarioTipo] = useState<'consumidor_cpf' | 'empresa_cnpj' | 'entrega_cliente' | 'entrega_empresa'>('consumidor_cpf');
@@ -226,7 +235,9 @@ const CalculatorScreen = ({
     localStorage.setItem('nfEmitenteEnderecoTipo', nfEmitenteEnderecoTipo);
     localStorage.setItem('nfEmitenteDocTipo', nfEmitenteDocTipo);
     localStorage.setItem('nfEmitenteDocNumero', nfEmitenteDocNumero);
-  }, [nfEmitenteTipo, nfEmitenteNome, nfEmitenteDoc, nfEmitenteEndereco, nfEmitenteNomeVendedor, nfEmitentePapel, nfEmitenteEnderecoTipo, nfEmitenteDocTipo, nfEmitenteDocNumero]);
+    localStorage.setItem('nfEmitenteCidade', nfEmitenteCidade);
+    localStorage.setItem('nfEmitenteEstado', nfEmitenteEstado);
+  }, [nfEmitenteTipo, nfEmitenteNome, nfEmitenteDoc, nfEmitenteEndereco, nfEmitenteNomeVendedor, nfEmitentePapel, nfEmitenteEnderecoTipo, nfEmitenteDocTipo, nfEmitenteDocNumero, nfEmitenteCidade, nfEmitenteEstado]);
   const [customerName, setCustomerName] = useState('');
   const [customerDoc, setCustomerDoc] = useState('');
   const [labelPreviewProduct, setLabelPreviewProduct] = useState<any | null>(null);
@@ -309,10 +320,235 @@ const CalculatorScreen = ({
   const [stockEditCategory, setStockEditCategory] = useState<string>('');
   const [stockEditSalesMerchandiseQty, setStockEditSalesMerchandiseQty] = useState<number>(0);
   const [stockEditWeightPerUnit, setStockEditWeightPerUnit] = useState<number>(0);
+  const [stockEditComercialUnit, setStockEditComercialUnit] = useState<string>('');
+  const [stockEditComercialText, setStockEditComercialText] = useState<string>('');
   const [stockFormSegmentoSearch, setStockFormSegmentoSearch] = useState<string>('');
   const [showStockFormSegmentoDropdown, setShowStockFormSegmentoDropdown] = useState<boolean>(false);
   const [quantityFilterCategory, setQuantityFilterCategory] = useState<string>('');
   const [quantitySearch, setQuantitySearch] = useState<string>('');
+
+  // === ESTADOS PARA SINCRONIZAÇÃO EM NUVEM E PAINEL ADMINISTRATIVO ===
+  const [pinToken, setPinToken] = useState<string>(() => localStorage.getItem('feiralivre_pin_token') || '');
+  const [lastSyncTime, setLastSyncTime] = useState<string>(() => localStorage.getItem('feiralivre_last_sync_time') || '');
+  const [isSyncing, setIsSyncing] = useState<boolean>(false);
+  const [adminMode, setAdminMode] = useState<boolean>(false);
+  const [adminPasscode, setAdminPasscode] = useState<string>('');
+  const [allSyncSessions, setAllSyncSessions] = useState<any[]>([]);
+  const [adminSelectedSession, setAdminSelectedSession] = useState<any | null>(null);
+  const [syncErrorMessage, setSyncErrorMessage] = useState<string>('');
+  const [syncSuccessMessage, setSyncSuccessMessage] = useState<string>('');
+
+  // Enviar dados locais para a Nuvem
+  const handleUploadToCloud = async (customPin?: string) => {
+    const targetPin = (customPin || pinToken || '').trim();
+    if (!targetPin) {
+      setSyncErrorMessage('É necessário um Token PIN para sincronizar.');
+      return;
+    }
+
+    setIsSyncing(true);
+    setSyncErrorMessage('');
+    setSyncSuccessMessage('');
+
+    try {
+      const payload = {
+        pinToken: targetPin,
+        feiranteName: (nfEmitenteNome || '').trim() || 'Feirante Autônomo',
+        feiranteCnpj: (nfEmitenteDoc || '').trim() || '',
+        products: products,
+        salesHistory: salesHistory,
+        productsSmartMetadata: productsSmartMetadata,
+        updatedAt: new Date().toISOString(),
+        createdAt: new Date().toISOString()
+      };
+
+      await setDoc(doc(db, 'syncs', targetPin), payload);
+      
+      const lastTime = new Date().toLocaleString('pt-BR');
+      setLastSyncTime(lastTime);
+      localStorage.setItem('feiralivre_last_sync_time', lastTime);
+      setSyncSuccessMessage(`Dados salvos na nuvem com sucesso usando o Token ${targetPin}!`);
+      
+      // Se não havia pinToken, salva o gerado/fornecido
+      if (!pinToken) {
+        setPinToken(targetPin);
+        localStorage.setItem('feiralivre_pin_token', targetPin);
+      }
+    } catch (error: any) {
+      console.error('Erro ao salvar na nuvem:', error);
+      setSyncErrorMessage(`Falha na sincronização: ${error.message || error}`);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  // Gerar novo Token PIN aleatório
+  const handleGeneratePinToken = async () => {
+    setSyncErrorMessage('');
+    setSyncSuccessMessage('');
+    setIsSyncing(true);
+    
+    try {
+      // Gera token de 6 dígitos aleatórios
+      let isUnique = false;
+      let newPin = '';
+      let attempts = 0;
+      
+      while (!isUnique && attempts < 10) {
+        newPin = Math.floor(100000 + Math.random() * 900000).toString();
+        // Verifica se o pin já existe na nuvem
+        const docRef = doc(db, 'syncs', newPin);
+        const docSnap = await getDoc(docRef);
+        if (!docSnap.exists()) {
+          isUnique = true;
+        }
+        attempts++;
+      }
+
+      setPinToken(newPin);
+      localStorage.setItem('feiralivre_pin_token', newPin);
+      
+      // Já sincroniza os dados locais de imediato com o novo token
+      await handleUploadToCloud(newPin);
+    } catch (error: any) {
+      console.error('Erro ao gerar Token PIN:', error);
+      setSyncErrorMessage(`Erro ao gerar PIN: ${error.message || error}`);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  // Baixar dados da nuvem para o navegador
+  const handleDownloadFromCloud = async (tokenToDownload: string) => {
+    const cleanToken = (tokenToDownload || '').trim();
+    if (!cleanToken) {
+      setSyncErrorMessage('Por favor, informe um Token PIN.');
+      return;
+    }
+
+    setIsSyncing(true);
+    setSyncErrorMessage('');
+    setSyncSuccessMessage('');
+
+    try {
+      const docRef = doc(db, 'syncs', cleanToken);
+      const docSnap = await getDoc(docRef);
+
+      if (docSnap.exists()) {
+        const cloudData = docSnap.data();
+        
+        // Atualizar estados locais do React
+        const cloudProds = cloudData.products || [];
+        const cloudSales = cloudData.salesHistory || [];
+        const cloudMetadata = cloudData.productsSmartMetadata || {};
+        
+        setProducts(cloudProds);
+        setSalesHistory(cloudSales);
+        setProductsSmartMetadata(cloudMetadata);
+
+        // Salvar no localStorage
+        localStorage.setItem('feiralivre_products', JSON.stringify(cloudProds));
+        localStorage.setItem('feiralivre_sales_history', JSON.stringify(cloudSales));
+        localStorage.setItem('feiralivre_products_smart_metadata', JSON.stringify(cloudMetadata));
+
+        // Atualizar o PIN ativo
+        setPinToken(cleanToken);
+        localStorage.setItem('feiralivre_pin_token', cleanToken);
+
+        const lastTime = new Date().toLocaleString('pt-BR');
+        setLastSyncTime(lastTime);
+        localStorage.setItem('feiralivre_last_sync_time', lastTime);
+
+        setSyncSuccessMessage(`Sucesso! Os dados do Token PIN ${cleanToken} foram recuperados da nuvem.`);
+      } else {
+        setSyncErrorMessage(`Nenhum registro encontrado para o Token PIN ${cleanToken}.`);
+      }
+    } catch (error: any) {
+      console.error('Erro ao baixar da nuvem:', error);
+      setSyncErrorMessage(`Erro ao recuperar dados: ${error.message || error}`);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  // Desconectar o Token PIN ativo do navegador
+  const handleDisconnectPin = () => {
+    setPinToken('');
+    setLastSyncTime('');
+    localStorage.removeItem('feiralivre_pin_token');
+    localStorage.removeItem('feiralivre_last_sync_time');
+    setSyncSuccessMessage('Token PIN desconectado do dispositivo local.');
+    setSyncErrorMessage('');
+  };
+
+  // Buscar todos os registros sincronizados (Exclusivo Administrador)
+  const handleAdminFetchAllSessions = async () => {
+    setIsSyncing(true);
+    setSyncErrorMessage('');
+    try {
+      const querySnapshot = await getDocs(collection(db, 'syncs'));
+      const sessions: any[] = [];
+      querySnapshot.forEach((doc) => {
+        sessions.push(doc.data());
+      });
+      // Ordenar do mais novo/atualizado para o mais antigo
+      sessions.sort((a, b) => new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime());
+      setAllSyncSessions(sessions);
+    } catch (error: any) {
+      console.error('Erro ao listar sessões:', error);
+      setSyncErrorMessage(`Erro de administrador ao buscar sessões: ${error.message || error}`);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  // Remover registro da nuvem permanentemente (Exclusivo Administrador)
+  const handleAdminDeleteSession = async (tokenToDelete: string) => {
+    if (!window.confirm(`Tem certeza que deseja excluir permanentemente o registro ${tokenToDelete} da nuvem?`)) {
+      return;
+    }
+
+    setIsSyncing(true);
+    setSyncErrorMessage('');
+    try {
+      await deleteDoc(doc(db, 'syncs', tokenToDelete));
+      setSyncSuccessMessage(`Registro ${tokenToDelete} excluído da nuvem.`);
+      if (adminSelectedSession?.pinToken === tokenToDelete) {
+        setAdminSelectedSession(null);
+      }
+      await handleAdminFetchAllSessions();
+    } catch (error: any) {
+      console.error('Erro ao excluir sessão:', error);
+      setSyncErrorMessage(`Erro ao excluir: ${error.message || error}`);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  // Entrar no modo de administração
+  const handleAdminLogin = async () => {
+    setSyncErrorMessage('');
+    setSyncSuccessMessage('');
+    const cleanPass = adminPasscode.trim().toUpperCase();
+    
+    // Senhas administrativas aceitas para fácil flexibilidade
+    if (cleanPass === 'ADMIN-FEIRA' || cleanPass === '999999' || cleanPass === '9999' || cleanPass === '123456') {
+      setAdminMode(true);
+      setSyncSuccessMessage('Modo Administrativo Ativado com sucesso!');
+      await handleAdminFetchAllSessions();
+    } else {
+      setSyncErrorMessage('Código de Acesso Administrativo inválido.');
+    }
+  };
+
+  // Sair do modo administrativo
+  const handleAdminLogout = () => {
+    setAdminMode(false);
+    setAdminPasscode('');
+    setAllSyncSessions([]);
+    setAdminSelectedSession(null);
+    setSyncSuccessMessage('Saindo do painel de administração.');
+  };
 
   // Estados para Gestão de Produtos em Estoque
   const [products, setProducts] = useState<Array<{
@@ -327,6 +563,8 @@ const CalculatorScreen = ({
     segmento?: string;
     salesMerchandiseQty?: number;
     empresaFornecedora?: string;
+    comercialUnit?: string;
+    comercialText?: string;
   }>>([]);
   const [productFormId, setProductFormId] = useState<string | null>(null);
   const [productFormName, setProductFormName] = useState<string>('');
@@ -599,11 +837,11 @@ const CalculatorScreen = ({
   ];
 
   const UNITS = [
-    { id: 'unit', label: 'UNIDADE', icon: Package },
-    { id: 'kg',   label: 'QUILO',   icon: Scale },
-    { id: 'gram', label: 'GRAMA',   icon: Weight },
-    { id: 'box',  label: 'CAIXA',   icon: Layers },
-    { id: 'bag',  label: 'SACO',    icon: ShoppingBag },
+    { id: 'unit', label: 'UNIDADE (un)', icon: Package },
+    { id: 'kg',   label: 'QUILO (kg)',   icon: Scale },
+    { id: 'gram', label: 'GRAMA (gr)',   icon: Weight },
+    { id: 'box',  label: 'CAIXA (cx)',   icon: Layers },
+    { id: 'bag',  label: 'SACO (sc)',    icon: ShoppingBag },
   ];
 
   // Detecta automaticamente o tipo de comércio do vendedor logado
@@ -1113,6 +1351,8 @@ const CalculatorScreen = ({
         tamanho: productFormTamanho || undefined,
         salesMerchandiseQty: Number(productFormSalesMerchandiseQty) || 0,
         empresaFornecedora: productFormEmpresaFornecedora.trim() || undefined,
+        comercialUnit: productFormComercialUnit || undefined,
+        comercialText: productFormComercialText || undefined,
       } : p);
       saveProducts(updated);
 
@@ -1205,6 +1445,8 @@ const CalculatorScreen = ({
         tamanho: productFormTamanho || undefined,
         salesMerchandiseQty: Number(productFormSalesMerchandiseQty) || 0,
         empresaFornecedora: productFormEmpresaFornecedora.trim() || undefined,
+        comercialUnit: productFormComercialUnit || undefined,
+        comercialText: productFormComercialText || undefined,
         createdAt: new Date().toLocaleString('pt-BR', {
           dateStyle: 'short',
           timeStyle: 'short'
@@ -1225,6 +1467,8 @@ const CalculatorScreen = ({
     setProductFormSalesMerchandiseQty(0);
     setProductFormTamanho('');
     setProductFormEmpresaFornecedora('');
+    setProductFormComercialUnit('');
+    setProductFormComercialText('');
   };
 
   const confirmDeleteProduct = (id: string) => {
@@ -1246,6 +1490,8 @@ const CalculatorScreen = ({
     setProductFormSalesMerchandiseQty(p.salesMerchandiseQty || 0);
     setProductFormTamanho(p.tamanho || '');
     setProductFormEmpresaFornecedora(p.empresaFornecedora || '');
+    setProductFormComercialUnit(p.comercialUnit || '');
+    setProductFormComercialText(p.comercialText || '');
   };
 
   const cancelEditProduct = () => {
@@ -1261,6 +1507,8 @@ const CalculatorScreen = ({
     setProductFormSalesMerchandiseQty(0);
     setProductFormTamanho('');
     setProductFormEmpresaFornecedora('');
+    setProductFormComercialUnit('');
+    setProductFormComercialText('');
   };
 
   // Função para validar e detalhar códigos GS1 Brasil / Internacional
@@ -1870,6 +2118,8 @@ Unidade: ${newItem.unit}`
           segmento: stockEditCategory || undefined,
           salesMerchandiseQty: stockEditSalesMerchandiseQty,
           weightPerUnit: stockEditWeightPerUnit,
+          comercialUnit: stockEditComercialUnit || undefined,
+          comercialText: stockEditComercialText || undefined,
         };
       }
       return p;
@@ -1884,6 +2134,8 @@ Unidade: ${newItem.unit}`
     setStockEditCategory('');
     setStockEditSalesMerchandiseQty(0);
     setStockEditWeightPerUnit(0);
+    setStockEditComercialUnit('');
+    setStockEditComercialText('');
     setStockFormSegmentoSearch('');
     
     setShowSuccessToast(true);
@@ -1898,6 +2150,8 @@ Unidade: ${newItem.unit}`
     setStockEditCategory('');
     setStockEditSalesMerchandiseQty(0);
     setStockEditWeightPerUnit(0);
+    setStockEditComercialUnit('');
+    setStockEditComercialText('');
     setStockFormSegmentoSearch('');
   };
 
@@ -2762,11 +3016,13 @@ Unidade: ${newItem.unit}`
                           ? 'NOTA FISCAL'
                           : activeTab === 'armazenagem'
                             ? 'Armazenamento & Rastreabilidade'
-                            : 'Minha Venda'}
+                            : activeTab === 'sync'
+                              ? 'Sincronização Nuvem & Painel Admin'
+                              : 'Minha Venda'}
               </h2>
               <p className={cn(
                 "text-[10px] font-bold text-emerald-600 tracking-widest uppercase",
-                activeTab === 'calculator' || activeTab === 'notafiscal' || activeTab === 'armazenagem' ? "tracking-widest" : "tracking-wider"
+                activeTab === 'calculator' || activeTab === 'notafiscal' || activeTab === 'armazenagem' || activeTab === 'sync' ? "tracking-widest" : "tracking-wider"
               )}>
                 {activeTab === 'calculator' 
                   ? 'COMERCIALIZAÇÃO DE VENDAS & ESTOQUE' 
@@ -2780,7 +3036,9 @@ Unidade: ${newItem.unit}`
                           ? 'DOCUMENTOS, IMPRIMIR NOTA FISCAL E DADOS.'
                           : activeTab === 'armazenagem'
                             ? 'LEITOR INTELIGENTE, BALANÇA INTEGRADA, CÂMERAS OCR E CONTROLE DE LOTES.'
-                            : 'Registro de venda, histórico de venda salva.'}
+                            : activeTab === 'sync'
+                              ? 'NUVEM PERMANENTE NACIONAL, BACKUPS, PIN TOKENS E CONTROLE DE ADMINISTRAÇÃO.'
+                              : 'Registro de venda, histórico de venda salva.'}
               </p>
             </div>
           </div>
@@ -2868,6 +3126,21 @@ Unidade: ${newItem.unit}`
                   {salesHistory.length}
                 </span>
               )}
+            </button>
+            <button
+              onClick={() => {
+                setActiveTab('sync');
+                setSyncErrorMessage('');
+                setSyncSuccessMessage('');
+              }}
+              className={cn(
+                "px-3 py-1.5 rounded-xl font-bold text-[10px] uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 relative w-full",
+                activeTab === 'sync' 
+                  ? "bg-white text-emerald-700 shadow-sm font-extrabold" 
+                  : "text-slate-500 hover:text-slate-700 hover:bg-slate-300/40"
+              )}
+            >
+              <RefreshCw size={11} className={isSyncing ? "animate-spin" : ""} /> Sincronismo Nuvem
             </button>
           </div>
         </div>
@@ -3035,6 +3308,16 @@ Unidade: ${newItem.unit}`
                                       setTamanho(p.tamanho);
                                     } else {
                                       setTamanho('');
+                                    }
+                                    if (p.comercialUnit) {
+                                      setComercialUnit(p.comercialUnit);
+                                    } else {
+                                      setComercialUnit('');
+                                    }
+                                    if (p.comercialText) {
+                                      setComercialText(p.comercialText);
+                                    } else {
+                                      setComercialText('');
                                     }
                                     setShowCalcProductDropdown(false);
                                     setTimeout(() => {
@@ -3788,7 +4071,7 @@ Unidade: ${newItem.unit}`
 
                 {/* Quantidade em estoque */}
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 ml-1">QUANTIDADE DO PRODUTO (VALOR DO PREÇO UNITÁRIO)</label>
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 ml-1">QUANTIDADE DO PRODUTO (DESEMBOLSO POR QUANTIDADE)</label>
                   <input
                     type="number"
                     placeholder="0"
@@ -3800,7 +4083,7 @@ Unidade: ${newItem.unit}`
 
                 {/* Quantidade de Mercadorias de Vendas */}
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 ml-1">QUANTIDADE DE MERCADORIAS DE VENDAS</label>
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 ml-1">ESTOQUE DE MERCADORIAS DE VENDAS</label>
                   <input
                     type="number"
                     placeholder="0"
@@ -3810,9 +4093,9 @@ Unidade: ${newItem.unit}`
                   />
                 </div>
 
-                {/* Mercadoria de Vendas (Unidade) - Seleção Manual no Novo Produto */}
+                {/* Mercadoria de Vendas com ícones e abreviações em português */}
                 <div className="space-y-2">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 ml-1 block">MERCADORIA DE VENDAS (UNIDADE)</label>
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 ml-1 block">MERCADORIAS DE VENDAS</label>
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                     {UNITS.map((u) => {
                       const Icon = u.icon;
@@ -3823,7 +4106,7 @@ Unidade: ${newItem.unit}`
                           type="button"
                           onClick={() => setProductFormUnit(u.id as any)}
                           className={cn(
-                            "flex flex-col items-center justify-center gap-1.5 p-3 rounded-xl border border-2 transition-all duration-150 cursor-pointer",
+                            "flex flex-col items-center justify-center gap-1.5 p-3 rounded-xl border-2 transition-all duration-150 cursor-pointer",
                             isActive
                               ? "border-emerald-500 bg-emerald-50/50 text-emerald-700 font-extrabold shadow-sm"
                               : "border-slate-100 bg-slate-50 text-slate-400 opacity-75 hover:opacity-100"
@@ -3837,19 +4120,41 @@ Unidade: ${newItem.unit}`
                   </div>
                 </div>
 
-                {/* Peso/Medida por Unidade ou Fardo (kg) */}
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 ml-1">PESO/MEDIDA POR UNIDADE OU FARDO (kg)</label>
-                  <div className="relative">
-                    <Scale size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 font-bold" />
-                    <input
-                      type="number"
-                      step="0.001"
-                      placeholder="0.000"
-                      value={productFormWeightPerUnit === 0 ? '' : productFormWeightPerUnit}
-                      onChange={(e) => setProductFormWeightPerUnit(Number(e.target.value))}
-                      className="w-full py-3 pl-9 pr-4 bg-slate-50 border border-slate-200 rounded-xl font-sans font-semibold text-slate-800 focus:outline-none focus:border-emerald-500 focus:bg-white text-xs transition-colors"
-                    />
+                {/* Dinâmica de Comercialização Opcional */}
+                <div className="space-y-3 pt-3 border-t border-slate-100">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">Comercialização Opcional</span>
+                    <span className="text-[8px] bg-emerald-50 text-emerald-700 py-0.5 px-2 rounded-full font-bold uppercase">Personalize</span>
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Menu Comercialização</label>
+                      <select
+                        value={productFormComercialUnit}
+                        onChange={(e) => setProductFormComercialUnit(e.target.value)}
+                        className="w-full py-2.5 px-3 bg-slate-50 border border-slate-200 rounded-xl font-sans font-semibold text-xs text-slate-750 focus:outline-none focus:border-emerald-500 focus:bg-white transition-colors cursor-pointer"
+                      >
+                        <option value="">Nenhuma opção selecionada</option>
+                        <option value="grama">Grama</option>
+                        <option value="quilo">Quilo</option>
+                        <option value="saco">Saco</option>
+                        <option value="unidade">Unidade</option>
+                        <option value="caixa">Caixa</option>
+                      </select>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Peso ou Medida</label>
+                      <input
+                        type="text"
+                        placeholder=""
+                        value={productFormComercialText}
+                        onChange={(e) => setProductFormComercialText(e.target.value)}
+                        disabled={!productFormComercialUnit}
+                        className="w-full py-2.5 px-3 bg-slate-50 border border-slate-200 rounded-xl font-sans font-semibold text-slate-800 focus:outline-none focus:border-emerald-500 focus:bg-white text-xs transition-colors disabled:opacity-50"
+                      />
+                    </div>
                   </div>
                 </div>
 
@@ -4371,7 +4676,7 @@ Unidade: ${newItem.unit}`
 
                   {/* Quantidade de Mercadorias de Vendas */}
                   <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 ml-1">QUANTIDADE DE MERCADORIAS DE VENDAS</label>
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 ml-1">ESTOQUE DE MERCADORIAS DE VENDAS</label>
                     <input
                       type="number"
                       placeholder="Ex: 10"
@@ -4381,9 +4686,9 @@ Unidade: ${newItem.unit}`
                     />
                   </div>
 
-                  {/* Mercadoria de Vendas Options */}
-                  <div className="space-y-2 pt-2">
-                    <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 ml-1 block">MERCADORIA DE VENDAS</label>
+                  {/* Mercadoria de Vendas com ícones e abreviações em português */}
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 ml-1 block">MERCADORIAS DE VENDAS</label>
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                       {UNITS.map((u) => {
                         const Icon = u.icon;
@@ -4394,7 +4699,7 @@ Unidade: ${newItem.unit}`
                             type="button"
                             onClick={() => setStockEditUnit(u.id as any)}
                             className={cn(
-                              "flex flex-col items-center justify-center gap-1.5 p-3 rounded-xl border border-2 transition-all duration-150",
+                              "flex flex-col items-center justify-center gap-1.5 p-3 rounded-xl border-2 transition-all duration-150 cursor-pointer",
                               isActive
                                 ? "border-emerald-500 bg-emerald-50/50 text-emerald-700 font-extrabold shadow-sm"
                                 : "border-slate-100 bg-slate-50 text-slate-400 opacity-75 hover:opacity-100"
@@ -4408,21 +4713,41 @@ Unidade: ${newItem.unit}`
                     </div>
                   </div>
 
-                  {/* Peso/Medida por Mercadoria de Vendas Selecionada */}
-                  <div className="space-y-1.5 pt-2">
-                    <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 ml-1">
-                      PESO/MEDIDA POR {UNITS.find(u => u.id === stockEditUnit)?.label || 'UNIDADE'}
-                    </label>
-                    <div className="relative">
-                      <Scale size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 font-bold" />
-                      <input
-                        type="number"
-                        step="0.001"
-                        placeholder="0.000"
-                        value={stockEditWeightPerUnit === 0 ? '' : stockEditWeightPerUnit}
-                        onChange={(e) => setStockEditWeightPerUnit(Number(e.target.value))}
-                        className="w-full py-3 pl-9 pr-4 bg-slate-50 border border-slate-200 rounded-xl font-sans font-semibold text-slate-800 focus:outline-none focus:border-emerald-500 focus:bg-white text-xs transition-colors"
-                      />
+                  {/* Dinâmica de Comercialização Opcional */}
+                  <div className="space-y-3 pt-3 border-t border-slate-100">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">Comercialização Opcional</span>
+                      <span className="text-[8px] bg-emerald-50 text-emerald-700 py-0.5 px-2 rounded-full font-bold uppercase">Personalize</span>
+                    </div>
+                    
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Menu Comercialização</label>
+                        <select
+                          value={stockEditComercialUnit}
+                          onChange={(e) => setStockEditComercialUnit(e.target.value)}
+                          className="w-full py-2.5 px-3 bg-slate-50 border border-slate-200 rounded-xl font-sans font-semibold text-xs text-slate-750 focus:outline-none focus:border-emerald-500 focus:bg-white transition-colors cursor-pointer"
+                        >
+                          <option value="">Nenhuma opção selecionada</option>
+                          <option value="grama">Grama</option>
+                          <option value="quilo">Quilo</option>
+                          <option value="saco">Saco</option>
+                          <option value="unidade">Unidade</option>
+                          <option value="caixa">Caixa</option>
+                        </select>
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Peso ou Medida</label>
+                        <input
+                          type="text"
+                          placeholder=""
+                          value={stockEditComercialText}
+                          onChange={(e) => setStockEditComercialText(e.target.value)}
+                          disabled={!stockEditComercialUnit}
+                          className="w-full py-2.5 px-3 bg-slate-50 border border-slate-200 rounded-xl font-sans font-semibold text-slate-800 focus:outline-none focus:border-emerald-500 focus:bg-white text-xs transition-colors disabled:opacity-50"
+                        />
+                      </div>
                     </div>
                   </div>
 
@@ -4677,6 +5002,8 @@ Unidade: ${newItem.unit}`
                               setStockFormSegmentoSearch(p.segmento || '');
                               setStockEditSalesMerchandiseQty(p.salesMerchandiseQty || 0);
                               setStockEditWeightPerUnit(p.weightPerUnit || 0);
+                              setStockEditComercialUnit(p.comercialUnit || '');
+                              setStockEditComercialText(p.comercialText || '');
                             }}
                             className="w-8 h-8 rounded-xl bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-500 hover:text-slate-800 flex items-center justify-center transition-colors shadow-sm"
                             title="Editar estoque do produto"
@@ -5707,7 +6034,7 @@ Unidade: ${newItem.unit}`
                                 {/* QUANTIDADE DO PRODUTO (VALOR DO PREÇO UNITÁRIO) */}
                                 <div className="flex flex-col gap-1 border-b border-dashed border-slate-100 pb-1.5">
                                   <span className="text-slate-400 text-[8.5px] font-black uppercase tracking-wider block">
-                                    QUANTIDADE DO PRODUTO (VALOR DO PREÇO UNITÁRIO)
+                                    QUANTIDADE DO PRODUTO (DESEMBOLSO POR QUANTIDADE)
                                   </span>
                                   <strong className="text-slate-800 normal-case text-xs font-bold leading-normal">
                                     {p.quantity} {formatUnitLabel(p.quantity, p.unit)} (R$ {p.costPrice.toLocaleString('pt-BR', { minimumFractionDigits: 2 })})
@@ -5717,7 +6044,7 @@ Unidade: ${newItem.unit}`
                                 {/* QUANTIDADE DE MERCADORIAS DE VENDAS */}
                                 <div className="flex flex-col gap-1 border-b border-dashed border-slate-100 pb-1.5">
                                   <span className="text-slate-400 text-[8.5px] font-black uppercase tracking-wider block">
-                                    QUANTIDADE DE MERCADORIAS DE VENDAS
+                                    ESTOQUE DE MERCADORIAS DE VENDAS
                                   </span>
                                   <strong className="text-slate-800 normal-case text-xs font-bold leading-normal">
                                     {p.salesMerchandiseQty || 0} {formatUnitLabel(p.salesMerchandiseQty || 0, p.unit)}
@@ -6813,9 +7140,14 @@ Unidade: ${newItem.unit}`
                         <strong className="text-slate-800 font-sans text-xs uppercase">{nfEmitenteEnderecoTipo === 'box' ? 'Box' : nfEmitenteEnderecoTipo === 'barraca' ? 'Barraca' : 'Endereço Comercial'}</strong>
                       </div>
 
-                      <div className="bg-slate-50/50 p-3.5 rounded-2xl border border-slate-100 md:col-span-2">
+                      <div className="bg-slate-50/50 p-3.5 rounded-2xl border border-slate-100 md:col-span-1">
                         <p className="text-[8px] text-slate-400 font-extrabold mb-1 tracking-widest">ENDEREÇO DETALHADO</p>
                         <strong className="text-slate-800 font-sans text-xs leading-relaxed block">{nfEmitenteEndereco || 'Não informado'}</strong>
+                      </div>
+
+                      <div className="bg-slate-50/50 p-3.5 rounded-2xl border border-slate-100 md:col-span-1">
+                        <p className="text-[8px] text-slate-400 font-extrabold mb-1 tracking-widest">ESTADO / CIDADE</p>
+                        <strong className="text-slate-800 font-sans text-xs leading-relaxed block">{nfEmitenteCidade || 'Não informado'} - {nfEmitenteEstado || 'Não informado'}</strong>
                       </div>
                     </div>
                   </div>
@@ -6997,6 +7329,35 @@ Unidade: ${newItem.unit}`
                               : 'ex: Av. das Nações, 1500'
                           }
                           className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-xs font-semibold text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all font-sans"
+                        />
+                      </div>
+
+                      {/* Cidade */}
+                      <div className="space-y-1">
+                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">
+                          Cidade
+                        </label>
+                        <input
+                          type="text"
+                          value={nfEmitenteCidade}
+                          onChange={(e) => setNfEmitenteCidade(e.target.value)}
+                          placeholder="ex: São Paulo"
+                          className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-xs font-semibold text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all font-sans"
+                        />
+                      </div>
+
+                      {/* Estado */}
+                      <div className="space-y-1">
+                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">
+                          Estado (UF)
+                        </label>
+                        <input
+                          type="text"
+                          maxLength={2}
+                          value={nfEmitenteEstado}
+                          onChange={(e) => setNfEmitenteEstado(e.target.value.toUpperCase())}
+                          placeholder="ex: SP"
+                          className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-xs font-semibold text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all font-sans text-center"
                         />
                       </div>
                     </div>
@@ -9109,6 +9470,996 @@ Unidade: ${newItem.unit}`
             </div>
           </div>
 
+        </div>
+
+      ) : activeTab === 'sync' ? (
+        <div id="sync-tab-panel" className="space-y-6 animate-fade-in pb-16 max-w-7xl mx-auto px-2 text-left">
+          
+          {/* Alertas de Sucesso / Erro */}
+          {syncSuccessMessage && (
+            <div className="p-4 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-2xl flex items-center gap-3 text-xs font-bold uppercase tracking-wider animate-fade-in">
+              <CheckCircle size={16} className="text-emerald-600 shrink-0" />
+              <span>{syncSuccessMessage}</span>
+            </div>
+          )}
+
+          {syncErrorMessage && (
+            <div className="p-4 bg-rose-50 border border-rose-200 text-rose-800 rounded-2xl flex items-center gap-3 text-xs font-bold uppercase tracking-wider animate-fade-in">
+              <AlertTriangle size={16} className="text-rose-600 shrink-0" />
+              <span>{syncErrorMessage}</span>
+            </div>
+          )}
+
+          {/* Grid Principal: Menu de Seleção Lateral e Conteúdo */}
+          <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-start">
+            
+            {/* COLUNA BRANCA DE SELEÇÃO DO MENU */}
+            <div className="md:col-span-3 bg-white rounded-3xl p-4 shadow-sm border border-slate-100 flex flex-col gap-2.5 shrink-0">
+              <div className="px-2 mb-1.5">
+                <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">Menu de Navegação</span>
+                <p className="text-[10px] text-slate-400 font-medium mt-0.5">Selecione uma visualização para monitorar os dados salvos em nuvem.</p>
+              </div>
+
+              {[
+                { id: 'sync', label: 'Sincronismo & Backup' },
+                { id: 'avaliacao', label: 'Avaliação de Estoque' },
+                { id: 'relatorio', label: 'Dados Salvos & Notas' }
+              ].map((tab) => {
+                const isActive = syncSubTab === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => setSyncSubTab(tab.id as any)}
+                    className={cn(
+                      "w-full h-12 bg-slate-50 hover:bg-slate-100/80 border rounded-2xl flex items-center p-1 transition-all text-left cursor-pointer group",
+                      isActive ? "border-emerald-500 bg-emerald-50/50" : "border-slate-200/40"
+                    )}
+                  >
+                    {/* Quadrado branco de 40px de altura e 50px de largura */}
+                    <div className="h-10 w-[50px] bg-white rounded-xl border border-slate-200 flex items-center justify-center shrink-0 shadow-sm transition-colors group-hover:border-slate-300">
+                      {/* Bola ao lado esquerdo */}
+                      <div className={cn(
+                        "w-3 h-3 rounded-full border-2 transition-all",
+                        isActive 
+                          ? "bg-emerald-500 border-emerald-600 scale-110 shadow-sm" 
+                          : "bg-slate-200 border-slate-300 group-hover:border-slate-400"
+                      )} />
+                    </div>
+                    {/* Nome da aba selecionada lado direito */}
+                    <span className={cn(
+                      "ml-3 text-[10px] font-black uppercase tracking-wider transition-colors truncate pr-1",
+                      isActive ? "text-emerald-700" : "text-slate-500 group-hover:text-slate-800"
+                    )}>
+                      {tab.label}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* CONTEÚDO PRINCIPAL DINÂMICO */}
+            <div className="md:col-span-9 space-y-6">
+              
+              {syncSubTab === 'sync' ? (
+                /* ================= SUB-ABA: SINCRONISMO & BACKUP ================= */
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                  
+                  {/* COLUNA 1: PAINEL DO FEIRANTE (Sincronismo & Backup) */}
+                  <div className="lg:col-span-6 bg-white rounded-3xl p-6 shadow-sm border border-slate-100 space-y-6">
+                    <div className="border-b border-slate-100 pb-4">
+                      <span className="text-[9px] text-emerald-600 font-extrabold uppercase tracking-widest block">Backup na Nuvem</span>
+                      <h3 className="text-base font-black text-slate-800 uppercase tracking-tight">Sincronismo de Feirante</h3>
+                      <p className="text-xs text-slate-400 font-medium mt-0.5">Sincronize seu histórico de vendas e estoque de forma offline-first.</p>
+                    </div>
+
+                    {!pinToken ? (
+                      /* Caso SEM TOKEN PIN ATIVO: Oferecer gerar ou conectar */
+                      <div className="space-y-6">
+                        <div className="bg-slate-50 border border-slate-100 p-5 rounded-2xl space-y-3">
+                          <div className="w-10 h-10 bg-indigo-50 text-indigo-600 rounded-xl flex items-center justify-center">
+                            <RefreshCw size={18} className="animate-pulse" />
+                          </div>
+                          <h4 className="font-extrabold text-xs text-slate-800 uppercase tracking-wider">Como funciona o PIN permanente?</h4>
+                          <p className="text-[11px] text-slate-500 font-medium leading-relaxed">
+                            Gerando um Token PIN, seus dados são salvos com segurança em nossa nuvem permanente. 
+                            Você pode usar o mesmo Token PIN em qualquer dispositivo para recuperar suas informações sem precisar de login, cadastro ou senhas complicadas.
+                          </p>
+                        </div>
+
+                        <div className="space-y-4">
+                          {/* BOTOES DE GERAR */}
+                          <button
+                            type="button"
+                            onClick={handleGeneratePinToken}
+                            disabled={isSyncing}
+                            className="w-full py-4 px-5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-black text-xs uppercase tracking-widest rounded-2xl transition-all shadow-md active:scale-95 flex items-center justify-center gap-2 border-0 cursor-pointer"
+                          >
+                            {isSyncing ? (
+                              <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                            ) : (
+                              <RefreshCw size={14} />
+                            )}
+                            <span>{isSyncing ? "GERANDO TOKEN..." : "GERAR NOVO TOKEN PIN"}</span>
+                          </button>
+
+                          <div className="relative flex py-2 items-center">
+                            <div className="flex-grow border-t border-slate-100"></div>
+                            <span className="flex-shrink mx-4 text-slate-400 text-[10px] font-extrabold uppercase tracking-widest">Ou Conectar PIN Existente</span>
+                            <div className="flex-grow border-t border-slate-100"></div>
+                          </div>
+
+                          {/* CONECTAR PIN */}
+                          <div className="space-y-2 text-left">
+                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">Insira seu Código PIN de 6 dígitos</label>
+                            <div className="flex gap-2">
+                              <input
+                                type="text"
+                                maxLength={6}
+                                placeholder="Ex: 149258"
+                                id="input-pin-connect"
+                                className="flex-1 bg-slate-50 border border-slate-200 rounded-xl py-3 px-4 text-sm font-black tracking-widest text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all font-mono text-center"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const inputEl = document.getElementById('input-pin-connect') as HTMLInputElement;
+                                  if (inputEl) {
+                                    handleDownloadFromCloud(inputEl.value);
+                                  }
+                                }}
+                                disabled={isSyncing}
+                                className="px-5 bg-slate-800 hover:bg-slate-900 text-white font-black text-xs uppercase tracking-widest rounded-xl transition-all border-0 cursor-pointer flex items-center gap-1.5"
+                              >
+                                {isSyncing ? (
+                                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                ) : (
+                                  <Check size={14} />
+                                )}
+                                Conectar
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      /* Caso COM TOKEN PIN ATIVO: Mostrar status, permitir sincronizar/desconectar */
+                      <div className="space-y-6">
+                        {/* CARD DE PIN ATIVO */}
+                        <div className="bg-gradient-to-br from-emerald-500/10 to-teal-500/5 border border-emerald-500/20 rounded-3xl p-5 space-y-4 text-left relative overflow-hidden">
+                          <div className="flex justify-between items-start">
+                            <div>
+                              <span className="text-[8px] bg-emerald-500/20 text-emerald-800 font-black px-2 py-0.5 rounded-full uppercase tracking-wider">
+                                Sincronismo Ativo
+                              </span>
+                              <p className="text-[10px] text-slate-400 font-extrabold uppercase mt-2">Seu Token PIN Permanente</p>
+                              <h4 className="text-3xl font-mono font-black text-emerald-800 tracking-wider mt-0.5">
+                                {pinToken}
+                              </h4>
+                            </div>
+                            
+                            <div className="flex gap-2">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  navigator.clipboard.writeText(pinToken);
+                                  setSyncSuccessMessage('Token PIN copiado para a área de transferência!');
+                                  setTimeout(() => setSyncSuccessMessage(''), 3000);
+                                }}
+                                className="w-8 h-8 rounded-full bg-white text-slate-500 hover:text-slate-700 border border-slate-100 flex items-center justify-center transition-colors cursor-pointer"
+                                title="Copiar PIN"
+                              >
+                                <Copy size={13} />
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={handleDisconnectPin}
+                                className="w-8 h-8 rounded-full bg-rose-50 text-rose-600 hover:bg-rose-100 border border-rose-100 flex items-center justify-center transition-colors cursor-pointer"
+                                title="Desconectar PIN"
+                              >
+                                <X size={13} />
+                              </button>
+                            </div>
+                          </div>
+
+                          <div className="border-t border-emerald-500/10 pt-3 grid grid-cols-2 gap-3 text-[10px] font-semibold text-slate-500 uppercase tracking-wider">
+                            <div>
+                              <p className="text-[8px] text-slate-400">Empreendimento / Feirante</p>
+                              <strong className="text-slate-800 font-sans">{nfEmitenteNome || 'Feirante Autônomo'}</strong>
+                            </div>
+                            <div>
+                              <p className="text-[8px] text-slate-400">CPF / CNPJ</p>
+                              <strong className="text-slate-800 font-mono">{nfEmitenteDoc || 'Não cadastrado'}</strong>
+                            </div>
+                            <div>
+                              <p className="text-[8px] text-slate-400">Último Sincronismo</p>
+                              <strong className="text-slate-800 font-sans text-[9px]">{lastSyncTime || 'Nunca sincronizado'}</strong>
+                            </div>
+                            <div>
+                              <p className="text-[8px] text-slate-400">Status Local</p>
+                              <strong className="text-emerald-600 font-sans">Pronto para salvar</strong>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* INFO DA BASE DE DADOS LOCAL */}
+                        <div className="bg-slate-50 border border-slate-100 p-4 rounded-2xl text-[10px] uppercase font-bold text-slate-600 space-y-2">
+                          <p className="text-slate-400 font-black tracking-widest text-[8px] border-b border-slate-200/50 pb-1">Resumo de Dados Locais a Enviar</p>
+                          <div className="flex justify-between">
+                            <span>Produtos Cadastrados:</span>
+                            <strong className="text-slate-800">{products.length} itens</strong>
+                          </div>
+                          <div className="flex justify-between">
+                            <span>Vendas no Histórico:</span>
+                            <strong className="text-slate-800">{salesHistory.length} registros</strong>
+                          </div>
+                          <div className="flex justify-between">
+                            <span>Rastreabilidade Inteligente:</span>
+                            <strong className="text-slate-800">{Object.keys(productsSmartMetadata).length} fichas</strong>
+                          </div>
+                        </div>
+
+                        {/* BOTOES DE SINCRONISMO */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <button
+                            type="button"
+                            onClick={() => handleUploadToCloud()}
+                            disabled={isSyncing}
+                            className="py-3.5 px-4 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-black text-xs uppercase tracking-widest rounded-2xl transition-all shadow-md active:scale-95 cursor-pointer flex items-center justify-center gap-2 border-0"
+                          >
+                            {isSyncing ? (
+                              <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                            ) : (
+                              <RefreshCw size={13} />
+                            )}
+                            <span>{isSyncing ? "Sincronizando..." : "Enviar para Nuvem"}</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleDownloadFromCloud(pinToken)}
+                            disabled={isSyncing}
+                            className="py-3.5 px-4 bg-slate-800 hover:bg-slate-900 disabled:opacity-50 text-white font-black text-xs uppercase tracking-widest rounded-2xl transition-all shadow-sm active:scale-95 cursor-pointer flex items-center justify-center gap-2 border-0"
+                          >
+                            {isSyncing ? (
+                              <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                            ) : (
+                              <Download size={13} />
+                            )}
+                            <span>Recuperar da Nuvem</span>
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* COLUNA 2: PAINEL DA ADMINISTRAÇÃO (Acesso aos PINs de todos) */}
+                  <div className="lg:col-span-6 bg-white rounded-3xl p-6 shadow-sm border border-slate-100 space-y-6">
+                    <div className="border-b border-slate-100 pb-4">
+                      <span className="text-[9px] text-indigo-600 font-extrabold uppercase tracking-widest block">Central Administrativa</span>
+                      <h3 className="text-base font-black text-slate-800 uppercase tracking-tight">Painel da Administração</h3>
+                      <p className="text-xs text-slate-400 font-medium mt-0.5 font-sans">Acesse os tokens PIN gerados pelos feirantes e visualize seus históricos.</p>
+                    </div>
+
+                    {!adminMode ? (
+                      /* LOGIN DO ADMINISTRADOR */
+                      <div className="space-y-4">
+                        <div className="bg-slate-50 border border-slate-100 p-4 rounded-2xl text-[11px] text-slate-500 font-semibold text-left">
+                          <p className="text-slate-700 font-extrabold uppercase tracking-wider text-[10px] mb-1">Acesso Restrito</p>
+                          Insira o Código de Acesso do Administrador da Feira Livre para visualizar e gerenciar todos os backups e tokens ativos no sistema.
+                          <p className="text-[9px] text-indigo-600 font-bold mt-2 uppercase tracking-widest">Dica: Digite "ADMIN-FEIRA" ou "9999" para acessar.</p>
+                        </div>
+
+                        <div className="space-y-2 text-left">
+                          <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">Senha Administrativa</label>
+                          <div className="flex gap-2">
+                            <input
+                              type="password"
+                              placeholder="••••••••"
+                              value={adminPasscode}
+                              onChange={(e) => setAdminPasscode(e.target.value)}
+                              className="flex-1 bg-slate-50 border border-slate-200 rounded-xl py-3 px-4 text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all font-mono text-center"
+                            />
+                            <button
+                              type="button"
+                              onClick={handleAdminLogin}
+                              className="px-5 bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs uppercase tracking-widest rounded-xl transition-all border-0 cursor-pointer"
+                            >
+                              Acessar
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      /* PAINEL ADMINISTRATIVO ATIVADO */
+                      <div className="space-y-5">
+                        <div className="flex justify-between items-center bg-indigo-50/50 p-3.5 rounded-2xl border border-indigo-100/30">
+                          <div className="text-left">
+                            <span className="text-[8px] bg-indigo-100 text-indigo-800 px-2.5 py-0.5 rounded-full font-black uppercase tracking-wider border border-indigo-200">
+                              Admin Ativo
+                            </span>
+                            <p className="text-[10px] text-indigo-900 font-extrabold mt-1 uppercase">Sessões em todo o Brasil</p>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={handleAdminLogout}
+                            className="px-3.5 py-1.5 bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-100 font-bold text-[10px] uppercase tracking-wider rounded-xl transition-colors cursor-pointer flex items-center gap-1"
+                          >
+                            Sair do Admin
+                          </button>
+                        </div>
+
+                        {/* LISTAGEM DE REGISTROS NA NUVEM */}
+                        <div className="space-y-2.5">
+                          <div className="flex justify-between items-center">
+                            <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Sessões Sincronizadas ({allSyncSessions.length})</span>
+                            <button
+                              type="button"
+                              onClick={handleAdminFetchAllSessions}
+                              className="text-[9px] text-indigo-600 font-black uppercase tracking-widest hover:underline cursor-pointer border-0 bg-transparent flex items-center gap-1 animate-pulse"
+                            >
+                              <RefreshCw size={10} /> Atualizar Lista
+                            </button>
+                          </div>
+
+                          <div className="space-y-2.5 max-h-[320px] overflow-y-auto pr-1">
+                            {allSyncSessions.map((session, idx) => {
+                              const isCurrentlySelected = adminSelectedSession?.pinToken === session.pinToken;
+                              
+                              return (
+                                <div
+                                  key={session.pinToken || idx}
+                                  className={cn(
+                                    "p-3 rounded-2xl border text-left transition-all relative space-y-2",
+                                    isCurrentlySelected
+                                      ? "bg-indigo-50/40 border-indigo-300 ring-1 ring-indigo-300/30"
+                                      : "bg-slate-50/60 hover:bg-slate-50 border-slate-100"
+                                  )}
+                                >
+                                  <div className="flex justify-between items-start gap-2">
+                                    <div>
+                                      <span className="font-mono font-black text-indigo-800 text-xs bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">
+                                        PIN: {session.pinToken}
+                                      </span>
+                                      <h4 className="font-bold text-xs text-slate-800 uppercase tracking-tight mt-1.5 leading-none">
+                                        {session.feiranteName || 'Feirante Autônomo'}
+                                      </h4>
+                                      {session.feiranteCnpj && (
+                                        <p className="text-[9px] text-slate-400 font-mono mt-1">Doc: {session.feiranteCnpj}</p>
+                                      )}
+                                    </div>
+
+                                    <div className="flex gap-1.5" onClick={(e) => e.stopPropagation()}>
+                                      <button
+                                        type="button"
+                                        onClick={() => setAdminSelectedSession(isCurrentlySelected ? null : session)}
+                                        className="p-1.5 bg-white text-slate-600 hover:text-slate-800 border border-slate-200 rounded-lg flex items-center justify-center cursor-pointer transition-colors"
+                                        title="Visualizar Ficha"
+                                      >
+                                        <Eye size={12} />
+                                      </button>
+                                      
+                                      <button
+                                        type="button"
+                                        onClick={() => handleDownloadFromCloud(session.pinToken)}
+                                        className="p-1.5 bg-white text-emerald-700 hover:bg-emerald-50 border border-slate-200 rounded-lg flex items-center justify-center cursor-pointer transition-colors"
+                                        title="Importar Local"
+                                      >
+                                        <Download size={12} />
+                                      </button>
+
+                                      <button
+                                        type="button"
+                                        onClick={() => handleAdminDeleteSession(session.pinToken)}
+                                        className="p-1.5 bg-rose-50 text-rose-600 hover:bg-rose-100 border border-rose-100 rounded-lg flex items-center justify-center cursor-pointer transition-colors"
+                                        title="Excluir da Nuvem"
+                                      >
+                                        <Trash2 size={12} />
+                                      </button>
+                                    </div>
+                                  </div>
+
+                                  <div className="flex items-center gap-3 pt-1 border-t border-slate-200/50 text-[8px] font-bold text-slate-400 uppercase tracking-wider">
+                                    <span>📦 {session.products?.length || 0} produtos</span>
+                                    <span>📦 {session.salesHistory?.length || 0} vendas</span>
+                                    <span className="ml-auto font-sans font-medium text-[7.5px] text-slate-400">Último sync: {new Date(session.updatedAt || 0).toLocaleDateString('pt-BR')}</span>
+                                  </div>
+                                </div>
+                              );
+                            })}
+
+                            {allSyncSessions.length === 0 && (
+                              <div className="p-8 text-center bg-slate-50 border border-dashed border-slate-200 rounded-2xl space-y-2">
+                                <Package size={22} className="text-slate-300 mx-auto" />
+                                <p className="text-[10px] text-slate-400 font-bold uppercase">Nenhum registro de feirante na nuvem</p>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ) : syncSubTab === 'avaliacao' ? (
+                /* ================= SUB-ABA: AVALIAÇÃO DE ESTOQUE ================= */
+                <div className="bg-white rounded-3xl p-6 shadow-sm border border-slate-100 space-y-6">
+                  
+                  <div className="border-b border-slate-100 pb-4">
+                    <h3 className="text-base font-black text-slate-800 uppercase tracking-tight">Avaliação de Estoque</h3>
+                    <p className="text-xs text-slate-400 font-medium mt-0.5">Produto salvo com rastreamento, valor e desembolso.</p>
+                  </div>
+
+                  {/* CARDS COM METRICAS DE ESTOQUE */}
+                  <div className="max-w-sm">
+                    {/* CARD 1: TOTAL DE PRODUTOS */}
+                    <div className="bg-slate-50 border border-slate-100 rounded-2xl p-4 text-left">
+                      <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">
+                        {products.length <= 1 ? "Total de Item" : "Totais de Itens"}
+                      </span>
+                      <h4 className="text-xl font-bold text-slate-800 mt-1">{products.length}</h4>
+                      {(() => {
+                        const totalPhysicalQty = products.reduce((acc, p) => acc + (p.quantity || 0), 0);
+                        return (
+                          <p className="text-[9px] text-slate-500 font-medium mt-1">
+                            {totalPhysicalQty <= 1 ? "Quantidade:" : "Quantidades:"}{" "}
+                            <strong className="text-slate-700">{totalPhysicalQty}</strong>
+                          </p>
+                        );
+                      })()}
+                    </div>
+                  </div>
+
+                  {/* LISTAGEM INDIVIDUAL DE AVALIAÇÃO */}
+                  <div className="space-y-3">
+                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">MERCADOLOGIA / COMERCIALIZAÇÃO</span>
+                    
+                    {/* MENU SELECT DE PRODUTOS */}
+                    {products.length > 0 && (
+                      <div className="relative w-full max-w-md">
+                        <div className="relative">
+                          <select
+                            id="sync-product-menu-select"
+                            value={syncSelectedProductId || ''}
+                            onChange={(e) => setSyncSelectedProductId(e.target.value)}
+                            className="w-full bg-slate-50 border border-slate-200 hover:border-indigo-200 rounded-2xl py-3 px-4 text-xs font-black text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all appearance-none cursor-pointer pr-10"
+                          >
+                            <option value="">Selecionar</option>
+                            {products.map((prod) => (
+                              <option key={prod.id} value={prod.id}>
+                                • {prod.name} — R$ {prod.salePrice.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                              </option>
+                            ))}
+                          </select>
+                          <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-slate-400">
+                            <ChevronDown size={14} />
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="space-y-4 max-h-[500px] overflow-y-auto pr-1">
+                      {products.length > 0 && !syncSelectedProductId && (
+                        <div className="p-8 text-center bg-slate-50/50 border border-slate-200/40 rounded-3xl text-slate-400 text-xs font-medium space-y-1.5">
+                          <p className="font-extrabold text-slate-500 uppercase tracking-wider text-[9px]">Nenhum produto selecionado</p>
+                          <p className="text-[11px] text-slate-400">Selecione um produto no menu acima para abrir suas informações.</p>
+                        </div>
+                      )}
+
+                      {(() => {
+                        const activeId = syncSelectedProductId;
+                        const filteredProducts = activeId ? products.filter(p => p.id === activeId) : [];
+                        return filteredProducts.map((p) => {
+                          const meta = productsSmartMetadata[p.id] || {};
+                          const unitLabel = p.unit === 'kg' ? 'kg' : p.unit === 'gram' ? 'g' : p.unit === 'box' ? 'cx' : p.unit === 'bag' ? 'sc' : 'un';
+                          const markup = p.costPrice > 0 ? ((p.salePrice - p.costPrice) / p.costPrice) * 100 : 0;
+                          const productCostValue = (p.quantity || 0) * (p.costPrice || 0);
+                          const productSaleValue = (p.salesMerchandiseQty || 0) * (p.salePrice || 0);
+                          const productProfit = Math.max(0, productSaleValue - productCostValue);
+                          const hasEtiquetaInfo = !!(
+                            p.etiquetaManual ||
+                            p.loteManual ||
+                            p.validadeData ||
+                            p.codigoBarras ||
+                            p.leitorEtiqueta ||
+                            p.fotoLote ||
+                            p.validadeFoto
+                          );
+
+                          return (
+                            <div key={p.id} className="p-5 bg-slate-50 hover:bg-slate-100/50 border border-slate-200/60 rounded-3xl text-left flex flex-col lg:flex-row justify-between gap-6 transition-all shadow-sm">
+                              
+                              {/* COLUNAS DE DETALHES DO PRODUTO */}
+                              <div className="space-y-4 flex-1">
+                                
+                                {/* 1. SEÇÃO: NOME DO PRODUTO */}
+                                <div>
+                                  <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">NOME DO PRODUTO</span>
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <strong className="text-slate-800 text-sm font-black uppercase tracking-tight">{p.name}</strong>
+                                  </div>
+                                </div>
+
+                                {/* 2. SEÇÃO: EMPRESA / FORNECEDORA */}
+                                {p.empresaFornecedora && (
+                                  <div>
+                                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Empresa / Fornecedora</span>
+                                    <p className="text-xs font-bold text-slate-700 uppercase">
+                                      {p.empresaFornecedora}
+                                    </p>
+                                  </div>
+                                )}
+
+                                {/* 3. SEÇÃO: QUANTIDADE DO PRODUTO (DESEMBOLSO POR QUANTIDADE) */}
+                                <div>
+                                  <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">QUANTIDADE DO PRODUTO (DESEMBOLSO POR QUANTIDADE)</span>
+                                  <div className="bg-white border border-slate-100 rounded-xl p-3 space-y-1.5 text-xs text-slate-600 font-medium">
+                                    <div className="flex items-center gap-1.5">
+                                      <span>{p.quantity <= 1 ? "Quantidade:" : "Quantidades:"}</span>
+                                      <strong className="text-slate-800">{p.quantity}</strong>
+                                    </div>
+                                    <div className="flex items-center gap-1.5">
+                                      <span>Mercadoria de Venda:</span>
+                                      <strong className="text-slate-800">{p.salesMerchandiseQty || 0} {unitLabel}</strong>
+                                    </div>
+                                    <div className="flex items-center gap-1.5 border-t border-slate-100 pt-1.5 mt-1.5 text-[11px] font-bold text-slate-500">
+                                      <span>Desembolso por Quantidade (Custo Total):</span>
+                                      <strong className="text-indigo-700 text-[8px]">R$ {productCostValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</strong>
+                                    </div>
+                                  </div>
+                                </div>
+
+                                {/* 4. OPÇÕES OPCIONAIS (Menu Comercialização Categoria Opcional e Tamanho Opcional) */}
+                                {(p.comercialText || p.segmento || p.tamanho) && (
+                                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1 border-t border-slate-200/30">
+                                    {(p.comercialText || p.segmento) && (
+                                      <div>
+                                        <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Menu Comercialização Categoria (Opcional)</span>
+                                        <p className="text-xs font-semibold text-slate-600 bg-slate-100/60 px-2.5 py-1.5 rounded-lg">
+                                          {p.comercialText || p.segmento}
+                                        </p>
+                                      </div>
+                                    )}
+                                    {p.tamanho && (
+                                      <div>
+                                        <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Tamanho (Opcional)</span>
+                                        <p className="text-xs font-semibold text-slate-600 bg-slate-100/60 px-2.5 py-1.5 rounded-lg">
+                                          {p.tamanho}
+                                        </p>
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+
+                                {/* 5. GESTÃO DE ETIQUETA & RASTREABILIDADE */}
+                                {hasEtiquetaInfo && (
+                                  <div className="bg-slate-100/50 rounded-2xl p-4 border border-slate-200/40 space-y-3">
+                                    <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest block border-b border-slate-200/60 pb-1">
+                                      Etiqueta
+                                    </span>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-[11px] text-slate-600">
+                                      {p.etiquetaManual && (
+                                        <div>
+                                          <span className="text-[8px] font-black text-slate-400 uppercase tracking-wider block">Etiqueta Manual</span>
+                                          <strong className="text-slate-800">{p.etiquetaManual}</strong>
+                                        </div>
+                                      )}
+                                      {p.loteManual && (
+                                        <div>
+                                          <span className="text-[8px] font-black text-slate-400 uppercase tracking-wider block">Categoria de Lote</span>
+                                          <strong className="text-slate-800">{p.loteManual}</strong>
+                                        </div>
+                                      )}
+                                      {p.validadeData && (
+                                        <div>
+                                          <span className="text-[8px] font-black text-slate-400 uppercase tracking-wider block">Validade</span>
+                                          <strong className="text-slate-800">{p.validadeData}</strong>
+                                        </div>
+                                      )}
+                                      {p.codigoBarras && (
+                                        <div>
+                                          <span className="text-[8px] font-black text-slate-400 uppercase tracking-wider block">Código de Barras (Leitor)</span>
+                                          <strong className="text-slate-800 font-mono">{p.codigoBarras}</strong>
+                                        </div>
+                                      )}
+                                      {(p.createdAt || meta.createdAt) && (
+                                        <div>
+                                          <span className="text-[8px] font-black text-slate-400 uppercase tracking-wider block">Data/Horário do Produto</span>
+                                          <strong className="text-slate-800">
+                                            {p.createdAt || (() => {
+                                              try {
+                                                return new Date(meta.createdAt).toLocaleString('pt-BR', {
+                                                  dateStyle: 'short',
+                                                  timeStyle: 'short'
+                                                });
+                                              } catch (e) {
+                                                return '';
+                                              }
+                                            })()}
+                                          </strong>
+                                        </div>
+                                      )}
+                                      {p.leitorEtiqueta && (
+                                        <div>
+                                          <span className="text-[8px] font-black text-slate-400 uppercase tracking-wider block">Identificação de Lote</span>
+                                          <strong className="text-slate-800">{p.leitorEtiqueta}</strong>
+                                        </div>
+                                      )}
+                                      {p.fotoLote && (
+                                        <div className="sm:col-span-2">
+                                          <span className="text-[8px] font-black text-slate-400 uppercase tracking-wider block mb-1">Foto/Etiqueta do Lote</span>
+                                          <div className="flex items-center gap-3 bg-white p-2 rounded-xl border border-slate-100 max-w-xs">
+                                            <img
+                                              src={p.fotoLote}
+                                              alt="Foto Lote"
+                                              referrerPolicy="no-referrer"
+                                              className="w-10 h-10 object-cover rounded-lg border border-slate-200"
+                                            />
+                                            <span className="text-[10px] text-indigo-700 font-extrabold uppercase">Foto Etiqueta</span>
+                                          </div>
+                                        </div>
+                                      )}
+                                      {p.validadeFoto && (
+                                        <div className="sm:col-span-2">
+                                          <span className="text-[8px] font-black text-slate-400 uppercase tracking-wider block mb-1">Foto da Validade</span>
+                                          <div className="flex items-center gap-3 bg-white p-2 rounded-xl border border-slate-100 max-w-xs">
+                                            <img
+                                              src={p.validadeFoto}
+                                              alt="Foto Validade"
+                                              referrerPolicy="no-referrer"
+                                              className="w-10 h-10 object-cover rounded-lg border border-slate-200"
+                                            />
+                                            <span className="text-[10px] text-rose-700 font-extrabold uppercase">Foto Validade</span>
+                                          </div>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                )}
+
+                              </div>
+
+                              {/* VALOR DO PRODUTO (SEÇÃO DA DIREITA / FINAL DA COLUNA) */}
+                              <div className="flex flex-col justify-center border-t lg:border-t-0 lg:border-l border-slate-200/60 pt-4 lg:pt-0 lg:pl-6 shrink-0 min-w-[220px] text-slate-500 text-[11px] uppercase font-bold space-y-3 bg-slate-100/30 lg:bg-transparent -mx-5 -mb-5 lg:m-0 p-5 lg:p-0 rounded-b-3xl lg:rounded-none">
+                                <div className="space-y-3 text-xs">
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="font-semibold text-slate-400">Desembolso:</span>
+                                    <strong className="text-slate-850 text-sm">R$ {productCostValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</strong>
+                                  </div>
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="font-semibold text-slate-400">Preço de Desembolso:</span>
+                                    <strong className="text-slate-700">R$ {p.costPrice.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</strong>
+                                  </div>
+                                  <div className="flex items-center gap-1.5 border-t border-slate-200/40 pt-2.5">
+                                    <span className="font-semibold text-slate-400">Valor do Produto:</span>
+                                    <strong className="text-indigo-700 text-sm font-black">R$ {p.salePrice.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</strong>
+                                  </div>
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="font-semibold text-slate-400">Total do Produto:</span>
+                                    <strong className="text-emerald-700 text-sm font-black">R$ {productSaleValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</strong>
+                                  </div>
+                                </div>
+                              </div>
+
+                            </div>
+                          );
+                        });
+                      })()}
+
+                      {products.length === 0 && (
+                        <div className="p-8 text-center bg-slate-50 border border-dashed border-slate-200 rounded-2xl space-y-2">
+                          <Package size={22} className="text-slate-300 mx-auto" />
+                          <p className="text-[10px] text-slate-400 font-bold uppercase">Nenhuma mercadoria cadastrada no sistema.</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                /* ================= SUB-ABA: DADOS SALVOS & NOTAS (RELATÓRIO) ================= */
+                <div className="space-y-6">
+                  
+                  {/* TELA DE COLUNAS CONSOLIDADAS */}
+                  <div className="bg-white rounded-3xl p-6 shadow-sm border border-slate-100 space-y-5 text-left">
+                    <div className="border-b border-slate-100 pb-3">
+                      <span className="text-[9px] text-indigo-600 font-extrabold uppercase tracking-widest block">Registro de Origem & Destino</span>
+                      <h3 className="text-base font-black text-slate-800 uppercase tracking-tight">Colunas de Cadastro Nacional Regularizado</h3>
+                      <p className="text-xs text-slate-400 font-medium mt-0.5">Visão consolidada do emissor, vendedor, produto, fornecedores e códigos de rastreabilidade.</p>
+                    </div>
+
+                    {/* TABELA DE COLUNAS SOLICITADAS */}
+                    <div className="overflow-x-auto rounded-2xl border border-slate-100">
+                      <table className="w-full text-left border-collapse text-[10px] uppercase font-bold text-slate-600">
+                        <thead>
+                          <tr className="bg-slate-50 text-slate-400 border-b border-slate-100 text-[8px] tracking-wider">
+                            <th className="p-3">Emissor</th>
+                            <th className="p-3">Empresa/Empreendimento</th>
+                            <th className="p-3">Estado / Cidade</th>
+                            <th className="p-3">Vendedor</th>
+                            <th className="p-3">Fornecedora</th>
+                            <th className="p-3">Produto</th>
+                            <th className="p-3">Rastreio de Registro</th>
+                            <th className="p-3">Nota Fiscal</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 font-sans">
+                          {products.map((p) => {
+                            const meta = productsSmartMetadata[p.id] || {};
+                            const hasInvoices = salesHistory.some(sale => sale.items?.some((item: any) => item.id === p.id));
+                            return (
+                              <tr key={p.id} className="hover:bg-slate-50/50 transition-colors">
+                                <td className="p-3 font-extrabold text-slate-500">
+                                  {nfEmitenteTipo === 'feirante_cpf' ? 'Autônomo (CPF)' : nfEmitenteTipo === 'empresa_cnpj' ? 'Empresa (CNPJ)' : 'Autônomo (CNPJ)'}
+                                </td>
+                                <td className="p-3 text-slate-700 max-w-[130px] truncate">{nfEmitenteNome || 'João Hortifruti Ltda'}</td>
+                                <td className="p-3 text-slate-700">{nfEmitenteCidade} - {nfEmitenteEstado}</td>
+                                <td className="p-3 text-slate-600 max-w-[100px] truncate">{nfEmitenteNomeVendedor || 'Vendedor Autônomo'}</td>
+                                <td className="p-3 text-slate-600 max-w-[120px] truncate">{p.empresaFornecedora || meta.fornecedor || 'Cadastro Próprio'}</td>
+                                <td className="p-3 text-emerald-800 font-extrabold">{p.name}</td>
+                                <td className="p-3 font-mono text-[9px] text-slate-500">
+                                  {meta.lote ? `LOTE: ${meta.lote}` : `REG: ${p.id.slice(0, 8).toUpperCase()}`}
+                                </td>
+                                <td className="p-3">
+                                  <span className={cn(
+                                    "px-2 py-0.5 rounded text-[8px] font-black",
+                                    hasInvoices ? "bg-emerald-100 text-emerald-800" : "bg-slate-100 text-slate-500"
+                                  )}>
+                                    {hasInvoices ? 'SIM (VENDIDO)' : 'NÃO (ESTOQUE)'}
+                                  </span>
+                                </td>
+                              </tr>
+                            );
+                          })}
+
+                          {products.length === 0 && (
+                            <tr>
+                              <td colSpan={8} className="p-8 text-center text-slate-400 font-bold uppercase italic">
+                                Nenhum registro de dados cadastrados no banco de dados.
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  {/* BUSCADOR DE NOTAS FISCAIS COM FILTROS AVANÇADOS */}
+                  <div className="bg-white rounded-3xl p-6 shadow-sm border border-slate-100 space-y-5 text-left">
+                    <div className="border-b border-slate-100 pb-3">
+                      <span className="text-[9px] text-emerald-600 font-extrabold uppercase tracking-widest block">Histórico de Emissões</span>
+                      <h3 className="text-base font-black text-slate-800 uppercase tracking-tight">Buscar Notas Fiscais</h3>
+                      <p className="text-xs text-slate-400 font-medium mt-0.5">Encontre notas fiscais salvas buscando por nome de produto, preço ou data e abra o visualizador oficial.</p>
+                    </div>
+
+                    {/* FILTROS DE BUSCA */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div className="space-y-1">
+                        <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest block">Filtrar por Produto</label>
+                        <div className="relative">
+                          <input
+                            type="text"
+                            placeholder="Ex: Alface, Maçã..."
+                            value={syncSearchProduct}
+                            onChange={(e) => setSyncSearchProduct(e.target.value)}
+                            className="w-full pl-8 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:border-emerald-500 focus:bg-white"
+                          />
+                          <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                        </div>
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest block">Filtrar por Preço de Venda</label>
+                        <div className="relative">
+                          <input
+                            type="text"
+                            placeholder="Ex: 15.00, 50..."
+                            value={syncSearchPrice}
+                            onChange={(e) => setSyncSearchPrice(e.target.value)}
+                            className="w-full pl-8 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:border-emerald-500 focus:bg-white"
+                          />
+                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400">R$</span>
+                        </div>
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest block">Filtrar por Data</label>
+                        <div className="relative">
+                          <input
+                            type="text"
+                            placeholder="Ex: 15/07/2026, ontem..."
+                            value={syncSearchDate}
+                            onChange={(e) => setSyncSearchDate(e.target.value)}
+                            className="w-full pl-8 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:border-emerald-500 focus:bg-white"
+                          />
+                          <Calendar size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* LISTA DE NOTAS FISCAIS RETORNADAS */}
+                    <div className="space-y-3">
+                      {(() => {
+                        const filteredSales = salesHistory.filter((sale) => {
+                          if (!sale) return false;
+                          
+                          // Filtro de produto
+                          if (syncSearchProduct) {
+                            const pLower = syncSearchProduct.toLowerCase();
+                            const matchesProd = sale.items?.some((item: any) => item.name?.toLowerCase().includes(pLower));
+                            if (!matchesProd) return false;
+                          }
+
+                          // Filtro de preço
+                          if (syncSearchPrice) {
+                            const exactPrice = parseFloat(syncSearchPrice);
+                            if (!isNaN(exactPrice)) {
+                              // Se o total da venda bate ou o preço de algum item bate
+                              const matchesTotal = Math.abs((sale.total || 0) - exactPrice) < 2.0 || 
+                                                 sale.items?.some((item: any) => Math.abs((item.price || 0) - exactPrice) < 2.0);
+                              if (!matchesTotal) return false;
+                            }
+                          }
+
+                          // Filtro de data
+                          if (syncSearchDate) {
+                            const dLower = syncSearchDate.toLowerCase();
+                            const matchesDate = sale.date?.toLowerCase().includes(dLower);
+                            if (!matchesDate) return false;
+                          }
+
+                          return true;
+                        });
+
+                        return (
+                          <div className="space-y-3">
+                            <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">Notas Fiscais Encontradas ({filteredSales.length})</span>
+                            
+                            <div className="space-y-3 max-h-[350px] overflow-y-auto pr-1">
+                              {filteredSales.map((sale, idx) => {
+                                const orderNum = salesHistory.length - salesHistory.indexOf(sale);
+                                return (
+                                  <div key={sale.id || idx} className="p-4 bg-slate-50 border border-slate-200/60 rounded-2xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 hover:border-slate-300 transition-all">
+                                    <div className="space-y-1 text-left flex-1">
+                                      <div className="flex items-center gap-2 flex-wrap">
+                                        <strong className="text-slate-800 text-xs">Nota Fiscal #{sale.orderNumber || orderNum}</strong>
+                                        <span className="text-[8px] bg-emerald-50 border border-emerald-100 text-emerald-800 font-black px-1.5 py-0.5 rounded uppercase">
+                                          {sale.paymentMethod || 'Dinheiro'}
+                                        </span>
+                                        <span className="text-[8px] text-slate-400 font-semibold">{sale.date}</span>
+                                      </div>
+                                      <p className="text-[9px] text-slate-500 font-semibold uppercase">
+                                        Cliente: <strong className="text-slate-700">{sale.customerName || 'Consumidor Final'}</strong> 
+                                        {sale.customerDoc ? ` • Doc: ${sale.customerDoc}` : ''}
+                                      </p>
+                                      
+                                      {/* Itens */}
+                                      <div className="flex flex-wrap gap-1 mt-1.5">
+                                        {sale.items?.map((item: any, iIdx: number) => (
+                                          <span key={iIdx} className="bg-white border border-slate-200 text-slate-600 text-[8px] font-extrabold px-1.5 py-0.5 rounded uppercase">
+                                            {item.quantity}x {item.name} (R$ {item.price.toLocaleString('pt-BR', { minimumFractionDigits: 2 })})
+                                          </span>
+                                        ))}
+                                      </div>
+                                    </div>
+
+                                    <div className="flex sm:flex-col items-end gap-3 justify-between w-full sm:w-auto shrink-0 border-t sm:border-t-0 border-slate-100 pt-3 sm:pt-0">
+                                      <span className="text-xs font-black text-slate-800 font-mono">
+                                        R$ {sale.total?.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                      </span>
+                                      
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setNfSelectedOrderId(sale.id);
+                                          setActiveTab('notafiscal');
+                                        }}
+                                        className="py-1.5 px-3 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-[9px] uppercase tracking-wider rounded-xl transition-all shadow-sm flex items-center gap-1.5 border-0 cursor-pointer"
+                                      >
+                                        <Receipt size={10} /> Abrir Nota Fiscal
+                                      </button>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+
+                              {filteredSales.length === 0 && (
+                                <div className="p-8 text-center bg-slate-50 border border-dashed border-slate-200 rounded-2xl space-y-2">
+                                  <Receipt size={22} className="text-slate-300 mx-auto" />
+                                  <p className="text-[10px] text-slate-400 font-bold uppercase">Nenhuma nota fiscal encontrada para os filtros aplicados.</p>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* SESSÃO DETALHADA SELECIONADA PELO ADMINISTRADOR */}
+          {adminMode && adminSelectedSession && syncSubTab === 'sync' && (
+            <div className="bg-slate-900 text-white rounded-[32px] p-6 border border-slate-800 shadow-xl space-y-6 animate-fade-in text-left">
+              <div className="flex justify-between items-start border-b border-slate-800 pb-4">
+                <div>
+                  <span className="text-[9px] bg-indigo-500/20 text-indigo-400 font-extrabold px-2 py-0.5 rounded tracking-widest uppercase font-mono">
+                    Visualizador de Dados Nuvem
+                  </span>
+                  <h3 className="text-lg font-black uppercase mt-1.5">
+                    Relatório do Token: {adminSelectedSession.pinToken}
+                  </h3>
+                  <p className="text-xs text-slate-400 font-sans">Feirante: {adminSelectedSession.feiranteName || 'Autônomo'}</p>
+                </div>
+                
+                <button
+                  type="button"
+                  onClick={() => setAdminSelectedSession(null)}
+                  className="w-8 h-8 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-400 flex items-center justify-center border border-slate-700 cursor-pointer"
+                >
+                  <X size={15} />
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* LISTA DE PRODUTOS */}
+                <div className="space-y-3.5">
+                  <h4 className="text-[10px] font-black text-indigo-400 uppercase tracking-widest border-b border-slate-800 pb-1.5 flex items-center gap-1.5">
+                    <Package size={12} /> Produtos no Estoque ({adminSelectedSession.products?.length || 0})
+                  </h4>
+                  <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1">
+                    {adminSelectedSession.products?.map((p: any, idx: number) => (
+                      <div key={idx} className="p-3 bg-slate-800/50 rounded-xl border border-slate-800 text-[10px] font-semibold flex justify-between items-center">
+                        <div>
+                          <strong className="text-white text-xs">{p.name}</strong>
+                          <p className="text-slate-400 uppercase text-[9px] mt-0.5">Qtd: {p.quantity} {p.unit} • Cust: R$ {p.costPrice?.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
+                        </div>
+                        {p.salePrice && (
+                          <span className="text-emerald-400 font-mono text-xs font-bold">R$ {p.salePrice.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                        )}
+                      </div>
+                    ))}
+                    {(!adminSelectedSession.products || adminSelectedSession.products.length === 0) && (
+                      <p className="text-xs text-slate-500 italic">Sem produtos cadastrados.</p>
+                    )}
+                  </div>
+                </div>
+
+                {/* HISTÓRICO DE VENDAS */}
+                <div className="space-y-3.5">
+                  <h4 className="text-[10px] font-black text-indigo-400 uppercase tracking-widest border-b border-slate-800 pb-1.5 flex items-center gap-1.5">
+                    <CheckCircle size={12} /> Histórico de Vendas ({adminSelectedSession.salesHistory?.length || 0})
+                  </h4>
+                  <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1">
+                    {adminSelectedSession.salesHistory?.map((s: any, idx: number) => {
+                      const num = adminSelectedSession.salesHistory.length - idx;
+                      return (
+                        <div key={idx} className="p-3 bg-slate-800/50 rounded-xl border border-slate-800 text-[10px] font-semibold space-y-1 text-left">
+                          <div className="flex justify-between items-center text-[11px]">
+                            <strong className="text-white">Pedido #{num}</strong>
+                            <span className="text-emerald-400 font-mono font-bold">R$ {s.total?.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                          </div>
+                          <p className="text-slate-400 text-[9px] uppercase">{s.date || 'Sem data'} • Cliente: {s.customerName || 'Consumidor Final'}</p>
+                          <div className="flex flex-wrap gap-1 mt-1.5">
+                            {s.items?.map((item: any, iIdx: number) => (
+                              <span key={iIdx} className="bg-slate-800 text-slate-300 text-[8px] font-bold uppercase px-1.5 py-0.5 rounded border border-slate-700">
+                                {item.quantity}x {item.name}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                    {(!adminSelectedSession.salesHistory || adminSelectedSession.salesHistory.length === 0) && (
+                      <p className="text-xs text-slate-500 italic">Sem vendas realizadas.</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
       ) : null}
